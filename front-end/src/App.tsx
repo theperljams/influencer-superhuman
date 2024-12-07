@@ -3,12 +3,24 @@
 import React, { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatWindow from './components/ChatWindow';
-import './App.css';
+import './styles/App.css'; // Create this for overall styling
 
 const App: React.FC = () => {
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState<boolean>(true); // Sidebar toggle state
+  const [senderName, setSenderName] = useState<string | null>(null);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState<boolean>(true);
+
+  const handleSelectPlatform = (platform: string) => {
+    setSelectedPlatform(platform);
+    setSelectedConversation(null);
+    setSenderName(null);
+  };
+
+  const handleSelectConversation = (conversationId: string, senderName: string) => {
+    setSelectedConversation(conversationId);
+    setSenderName(senderName);
+  };
 
   const toggleSidebar = () => {
     setIsSidebarExpanded((prev) => !prev);
@@ -19,15 +31,15 @@ const App: React.FC = () => {
       <Sidebar
         selectedPlatform={selectedPlatform}
         selectedConversation={selectedConversation}
-        onSelectPlatform={(platform) => {
-          setSelectedPlatform(platform);
-          setSelectedConversation(null); // Reset conversation when platform changes
-        }}
-        onSelectConversation={setSelectedConversation}
-        isSidebarExpanded={isSidebarExpanded} // Pass the state
-        toggleSidebar={toggleSidebar} // Pass the toggle function
+        onSelectPlatform={handleSelectPlatform}
+        onSelectConversation={handleSelectConversation}
+        isSidebarExpanded={isSidebarExpanded}
+        toggleSidebar={toggleSidebar}
       />
-      <ChatWindow conversationId={selectedConversation} />
+      <ChatWindow
+        selectedConversation={selectedConversation}
+        senderName={senderName}
+      />
     </div>
   );
 };

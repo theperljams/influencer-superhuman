@@ -1,120 +1,106 @@
-// src/components/ChatWindow.tsx
-
 import React, { useState, useEffect, useRef } from 'react';
 import { FaArrowLeft, FaArrowRight } from 'react-icons/fa';
+import io from 'socket.io-client';
 import '../styles/ChatWindow.css';
-import { io, Socket } from 'socket.io-client';
 
 interface ChatWindowProps {
+  selectedConversation: string | null;
   conversationId: string | null;
 }
 
-// Define the structure of a message
 interface Message {
   sender: string;
   text: string;
-  timestamp: string; // Optional: Add timestamp if needed
+  responses: string[];
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({ conversationId }) => {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messageIndex, setMessageIndex] = useState<number>(0);
   const [newMessage, setNewMessage] = useState<string>('');
-  const [currentMessageIndex, setCurrentMessageIndex] = useState<number>(-1);
-  const [socket, setSocket] = useState<Socket | null>(null);
-
+  const [messages, setMessages] = useState<Message[]>([]);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Scroll to the latest message
-  const scrollToBottom = () => {
+  // Socket connection reference
+  const socketRef = useRef<any>(null);
+
+  // Scroll to the current message when messageIndex changes
+  const scrollToCurrentMessage = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Initialize Socket.IO connection
   useEffect(() => {
-    const newSocket = io('http://localhost:5000'); // Replace with your backend URL if different
-    setSocket(newSocket);
+    scrollToCurrentMessage();
+  }, [messageIndex, messages]);
 
-    // Listen for 'response_to_send' events from the backend
-    newSocket.on('response_to_send', (data: { response: string }) => {
-      const responseMessage: Message = {
-        sender: 'Auto-responder',
-        text: data.response,
-        timestamp: new Date().toISOString(),
+  useEffect(() => {
+    // Initialize Socket.IO client for the frontend namespace
+    socketRef.current = io('http://localhost:5000/frontend');
+
+    // Listen for 'newMessage' event
+    socketRef.current.on('newMessage', (data: any) => {
+      console.log('Received newMessage:', data);
+
+      const { message, sender, responses, timestamp } = data;
+      const newMessage: Message = {
+        sender,
+        text: message,
+        responses,
       };
-      setMessages((prevMessages) => [...prevMessages, responseMessage]);
+
+      // Only add the message if the sender matches the current conversationId
+      if (conversationId && sender === conversationId) {
+        setMessages((prevMessages) => {
+          const updatedMessages = [...prevMessages, newMessage];
+          return updatedMessages;
+        });
+
+        // Automatically set the index to the latest message if it's new
+        setMessageIndex((messages.length ?? 0) - 1);
+      }
     });
 
-    // Listen for 'send_message_to_client' events from the backend
-    newSocket.on('send_message_to_client', (data: { message: string }) => {
-      const userMessage: Message = {
-        sender: 'You',
-        text: data.message,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages((prevMessages) => [...prevMessages, userMessage]);
-    });
-
-    // Clean up the socket connection on component unmount
+    // Clean up the socket connection on unmount
     return () => {
-      newSocket.disconnect();
+      socketRef.current.disconnect();
     };
-  }, []);
-
-  // Update messages when conversationId changes
-  useEffect(() => {
-    if (conversationId) {
-      // Clear existing messages when a new conversation is selected
-      setMessages([]);
-      setNewMessage('');
-      setCurrentMessageIndex(-1);
-    }
   }, [conversationId]);
 
-  // Scroll to bottom whenever messages change
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
   const handleSend = () => {
-    if (newMessage.trim() === '' || !socket) return;
+    if (newMessage.trim() === '') return;
 
-    // Create a message object for the user
-    const userMessage: Message = {
-      sender: 'You',
-      text: newMessage.trim(),
-      timestamp: new Date().toISOString(),
-    };
-
-    // Emit the message to the backend
-    socket.emit('send_message', { message: userMessage.text });
-
-    // Add the message to the local state
-    setMessages((prevMessages) => [...prevMessages, userMessage]);
+    // Emit the new message to the backend
+    socketRef.current.emit('messageFromFrontend', {
+      message: newMessage,
+      sender: 'You', // Adjust the sender name as needed
+    });
 
     // Clear the input field
     setNewMessage('');
   };
 
   const handleSuggestedResponse = (response: string) => {
-    setNewMessage(response); // Populate the input with the suggested response
+    setNewMessage(response); // Populate the text box with the suggested response
   };
 
+  const currentMessage = messages[messageIndex] || null;
+
   const handlePrev = () => {
-    if (currentMessageIndex > 0) {
-      setCurrentMessageIndex(currentMessageIndex - 1);
+    if (messageIndex > 0) {
+      setMessageIndex(messageIndex - 1);
     }
   };
 
   const handleNext = () => {
-    if (currentMessageIndex < messages.length - 1) {
-      setCurrentMessageIndex(currentMessageIndex + 1);
+    if (messageIndex < messages.length - 1) {
+      setMessageIndex(messageIndex + 1);
     }
   };
 
-  // Determine if the textarea should expand based on message length
   const isExpanded = (text: string): boolean => {
     return text.length > 50;
   };
+
+  const senderName = conversationId || 'Sender';
 
   return (
     <div className="chat-window">
@@ -122,77 +108,58 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ conversationId }) => {
         <>
           {/* Header with Sender's Name */}
           <div className="chat-header">
-            <h2>Chat</h2> {/* You can customize this to display the conversation name */}
+            <h2>{senderName}</h2>
           </div>
-
-          {/* Messages Display with Navigation Arrows */}
-          {messages.length > 0 ? (
-            <div className="messages-container">
-              {/* Navigation Arrows */}
-              <div className="navigation-buttons">
+          {/* Sender's Messages Display with Navigation Arrows */}
+          {currentMessage ? (
+            <div className="sender-messages-container">
+              {messages.length > 1 && (
                 <button
                   className="nav-button"
                   onClick={handlePrev}
-                  disabled={currentMessageIndex <= 0}
+                  disabled={messageIndex === 0}
                   aria-label="Previous Message"
                 >
                   <FaArrowLeft />
                 </button>
+              )}
+              <div className="sender-message">
+                <p>{currentMessage.text}</p>
+              </div>
+              {messages.length > 1 && (
                 <button
                   className="nav-button"
                   onClick={handleNext}
-                  disabled={currentMessageIndex >= messages.length - 1}
+                  disabled={messageIndex === messages.length - 1}
                   aria-label="Next Message"
                 >
                   <FaArrowRight />
                 </button>
-              </div>
-
-              {/* Display Current Message */}
-              {currentMessageIndex !== -1 && messages[currentMessageIndex] ? (
-                <div className="message">
-                  <div className="sender">{messages[currentMessageIndex].sender}:</div>
-                  <div className="text">{messages[currentMessageIndex].text}</div>
-                </div>
-              ) : (
-                <div className="no-messages">No messages to display.</div>
               )}
             </div>
           ) : (
-            <div className="no-messages">No messages in this conversation.</div>
+            <div className="no-messages">
+              <p>No messages available.</p>
+            </div>
           )}
-
           {/* Suggested Responses */}
-          <div className="suggested-responses">
-            {messages.length > 0 && (
-              <>
-                {/** You can customize the suggested responses based on the latest message */}
+          {currentMessage && (
+            <div className="suggested-responses">
+              {currentMessage.responses.map((response, index) => (
                 <button
+                  key={index}
                   className="suggested-response-button"
-                  onClick={() => handleSuggestedResponse('Sure, let me check.')}
+                  onClick={() => handleSuggestedResponse(response)}
                 >
-                  Sure, let me check.
+                  {response}
                 </button>
-                <button
-                  className="suggested-response-button"
-                  onClick={() => handleSuggestedResponse('Can you provide more details?')}
-                >
-                  Can you provide more details?
-                </button>
-                <button
-                  className="suggested-response-button"
-                  onClick={() => handleSuggestedResponse('I will get back to you shortly.')}
-                >
-                  I will get back to you shortly.
-                </button>
-              </>
-            )}
-          </div>
-
+              ))}
+            </div>
+          )}
           {/* Expandable Text Box with Send Button */}
           <div className="message-input-container">
             <textarea
-              className={`message-input ${isExpanded(newMessage) ? 'expanded' : ''}`}
+              className="message-input"
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder="Type your message..."
@@ -202,7 +169,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ conversationId }) => {
               Send
             </button>
           </div>
-
           {/* Scroll Anchor */}
           <div ref={messagesEndRef} />
         </>

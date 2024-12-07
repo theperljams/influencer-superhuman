@@ -4,20 +4,33 @@ import React, { useEffect, useState } from 'react';
 import { FaChevronDown, FaChevronRight, FaBars } from 'react-icons/fa';
 import '../styles/Sidebar.css';
 
+// Define the shape of a conversation
+interface Conversation {
+  id: string;
+  senderName: string;
+}
+
 interface SidebarProps {
   selectedPlatform: string | null;
   selectedConversation: string | null;
   onSelectPlatform: (platform: string) => void;
-  onSelectConversation: (conversationId: string) => void;
-  isSidebarExpanded: boolean; // New prop
-  toggleSidebar: () => void; // New prop
+  onSelectConversation: (conversationId: string, senderName: string) => void;
+  isSidebarExpanded: boolean;
+  toggleSidebar: () => void;
 }
 
 // Mock conversations data
-const mockConversations: { [key: string]: string[] } = {
-  Slack: ['John Doe', 'Marketing Channel', 'Support'],
-  Discord: ['Gaming Server', 'Study Group', 'Dev Chat'],
-  Teams: ['Project A', 'HR Chat', 'Random'],
+const mockConversations: { [key: string]: Conversation[] } = {
+  Instagram: [
+    { id: 'insta-1', senderName: 'Braden' },
+    { id: 'insta-2', senderName: 'Savannah' },
+    { id: 'insta-3', senderName: 'Jared' },
+  ],
+  X: [
+    { id: 'x-1', senderName: 'Alex' },
+    { id: 'x-2', senderName: 'Taylor' },
+    { id: 'x-3', senderName: 'Morgan' },
+  ],
 };
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -25,13 +38,11 @@ const Sidebar: React.FC<SidebarProps> = ({
   selectedConversation,
   onSelectPlatform,
   onSelectConversation,
-  isSidebarExpanded, // Destructure the new prop
-  toggleSidebar, // Destructure the new prop
+  isSidebarExpanded,
+  toggleSidebar,
 }) => {
-  const [platforms] = useState<string[]>(['Slack', 'Discord', 'Teams']);
-  const [expandedPlatforms, setExpandedPlatforms] = useState<{
-    [key: string]: boolean;
-  }>({});
+  const [platforms] = useState<string[]>(['Instagram', 'X']);
+  const [expandedPlatforms, setExpandedPlatforms] = useState<{ [key: string]: boolean }>({});
 
   // Initialize expanded state when platforms change
   useEffect(() => {
@@ -47,6 +58,13 @@ const Sidebar: React.FC<SidebarProps> = ({
       ...prev,
       [platform]: !prev[platform],
     }));
+  };
+
+  const handleConversationClick = (platform: string, conversation: Conversation) => {
+    onSelectConversation(conversation.id, conversation.senderName);
+    if (!isSidebarExpanded) {
+      toggleSidebar(); // Expand sidebar when a conversation is selected
+    }
   };
 
   return (
@@ -68,15 +86,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         {platforms.map((platform) => (
           <li key={platform}>
             <div
-              className={`platform-item ${
-                platform === selectedPlatform ? 'selected' : ''
-              }`}
-              onClick={() => {
-                onSelectPlatform(platform);
-                if (!isSidebarExpanded) {
-                  toggleSidebar(); // Expand sidebar when a platform is selected
-                }
-              }}
+              className={`platform-item ${platform === selectedPlatform ? 'selected' : ''}`}
+              onClick={() => onSelectPlatform(platform)}
             >
               <div
                 className="platform-header"
@@ -104,13 +115,13 @@ const Sidebar: React.FC<SidebarProps> = ({
               <ul className="conversation-list">
                 {mockConversations[platform].map((conversation) => (
                   <li
-                    key={conversation}
+                    key={conversation.id}
                     className={`conversation-item ${
-                      conversation === selectedConversation ? 'selected' : ''
+                      conversation.id === selectedConversation ? 'selected' : ''
                     }`}
-                    onClick={() => onSelectConversation(conversation)}
+                    onClick={() => handleConversationClick(platform, conversation)}
                   >
-                    {conversation}
+                    {conversation.senderName}
                   </li>
                 ))}
               </ul>
