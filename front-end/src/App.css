@@ -1,0 +1,18 @@
+/* src/App.css */
+
+:root {
+  --primary-color: #FF6F61; /* Coral */
+  --secondary-color: #6B5B95; /* Deep Purple */
+  --accent-color: #4A90E2; /* Vibrant Blue */
+  --background-color: #F7F7F7; /* Light Gray */
+  --text-color: #333333; /* Dark Gray */
+  --header-footer-color: #FFFFFF; /* White */
+  --border-color: #CCCCCC; /* Medium Gray */
+  --hover-color: #357ABD; /* Darker Blue */
+}
+
+.app-container {
+  display: flex;
+  height: 100vh; /* Full viewport height */
+  background-color: var(--background-color); /* Apply background color */
+}

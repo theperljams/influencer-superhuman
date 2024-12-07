@@ -1,0 +1,134 @@
+/* src/components/Sidebar.css */
+
+.sidebar {
+    width: 250px; /* Width when expanded */
+    background-color: var(--header-footer-color); /* White Background */
+    border-right: 2px solid var(--border-color); /* Medium Gray Border */
+    padding: 20px; /* Increased padding */
+    box-sizing: border-box;
+    height: 100vh; /* Full viewport height */
+    overflow-y: auto;
+    transition: width 0.3s ease;
+    position: relative; /* For positioning the toggle button */
+  }
+  
+  .sidebar.collapsed {
+    width: 60px; /* Width when collapsed */
+  }
+  
+  .sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px; /* Increased margin */
+  }
+  
+  .sidebar-header h3 {
+    margin: 0;
+    font-size: 22px; /* Increased font size */
+    color: var(--text-color); /* Dark Gray */
+    white-space: nowrap; /* Prevent text from wrapping */
+  }
+  
+  .toggle-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 24px; /* Increased font size */
+    color: var(--accent-color); /* Blue Accent Color */
+    padding: 5px;
+    transition: transform 0.3s ease;
+  }
+  
+  .toggle-button:hover {
+    color: var(--hover-color); /* Darker Blue on hover */
+  }
+  
+  .platform-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  
+  .platform-item {
+    margin-bottom: 10px; /* Increased margin */
+  }
+  
+  .platform-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 15px; /* Increased padding */
+    background-color: var(--background-color); /* Light Gray Background */
+    border: 2px solid transparent; /* Initial transparent border */
+    border-radius: 10px; /* Rounded edges */
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+  }
+  
+  .platform-header:hover {
+    background-color: var(--accent-color); /* Blue Accent on hover */
+    color: var(--header-footer-color); /* White Text */
+    border-color: var(--accent-color); /* Blue Accent Border on hover */
+  }
+  
+  .platform-header:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--primary-color); /* Coral focus outline */
+  }
+  
+  .icon {
+    display: flex;
+    align-items: center;
+    font-size: 14px; /* Smaller icon size */
+    color: var(--text-color); /* Dark Gray */
+  }
+  
+  .conversation-list {
+    list-style: none;
+    padding-left: 30px; /* Increased padding */
+    margin-top: 10px; /* Increased margin */
+  }
+  
+  .conversation-item {
+    padding: 10px 15px; /* Increased padding */
+    cursor: pointer;
+    border: 2px solid transparent; /* Initial transparent border */
+    border-radius: 8px; /* Rounded edges */
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    color: var(--text-color); /* Dark Gray Text */
+    font-size: 16px; /* Increased font size */
+  }
+  
+  .conversation-item:hover {
+    background-color: var(--accent-color); /* Blue Accent on hover */
+    color: var(--header-footer-color); /* White Text */
+    border-color: var(--accent-color); /* Blue Accent Border on hover */
+  }
+  
+  .selected {
+    background-color: var(--primary-color) !important; /* Coral Background for selected */
+    color: var(--header-footer-color) !important; /* White Text */
+    border-color: var(--primary-color) !important; /* Coral Border for selected */
+  }
+  
+  .selected.conversation-item {
+    background-color: var(--primary-color) !important; /* Coral Background */
+    color: var(--header-footer-color) !important; /* White Text */
+    border-color: var(--primary-color) !important; /* Coral Border */
+  }
+  
+  /* Hide text when sidebar is collapsed */
+  .sidebar.collapsed .platform-header span:first-child {
+    display: none;
+  }
+  
+  .sidebar.collapsed .conversation-list {
+    display: none;
+  }
+  
+  .sidebar.collapsed .sidebar-header h3 {
+    display: none;
+  }
+  

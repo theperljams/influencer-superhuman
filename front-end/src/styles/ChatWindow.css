@@ -1,0 +1,160 @@
+/* src/components/ChatWindow.css */
+
+.chat-window {
+    flex: 1;
+    padding: 40px; /* Maintains ample padding */
+    background-color: var(--background-color); /* Light Gray Background */
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  
+  .chat-header {
+    text-align: center;
+    margin-bottom: 40px; /* Maintains spacing below header */
+  }
+  
+  .chat-header h2 {
+    margin: 0;
+    font-size: 32px; /* Prominent font size for sender's name */
+    color: var(--text-color); /* Dark Gray Text */
+  }
+  
+  .sender-messages-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 40px; /* Maintains spacing below messages */
+  }
+  
+  .sender-message {
+    background-color: var(--header-footer-color); /* White Background */
+    padding: 25px 30px; /* Increased padding for larger box */
+    border: 2px solid var(--primary-color); /* Coral Border */
+    border-radius: 20px; /* Pronounced rounded edges */
+    max-width: 100%; /* Allows message box to be larger */
+    text-align: center;
+    position: relative;
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.2); /* Enhanced shadow for depth */
+  }
+  
+  .sender-message p {
+    margin: 0;
+    font-size: 20px; /* Larger font size for readability */
+    color: var(--text-color); /* Dark Gray Text */
+  }
+  
+  .nav-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 28px; /* Larger icon size */
+    color: var(--primary-color); /* Changed to Coral Color */
+    padding: 20px; /* Increased padding for clickable area */
+    transition: color 0.2s ease, transform 0.2s ease;
+  }
+  
+  .nav-button:disabled {
+    color: var(--border-color); /* Medium Gray when disabled */
+    cursor: not-allowed;
+  }
+  
+  .nav-button:not(:disabled):hover {
+    color: var(--hover-color); /* Darker Blue on hover */
+    transform: scale(1.1); /* Slightly enlarge on hover for better feedback */
+  }
+  
+  .no-messages {
+    text-align: center;
+    color: var(--text-color); /* Dark Gray */
+    font-size: 20px; /* Increased font size */
+    margin-bottom: 40px;
+  }
+  
+  .suggested-responses {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px; /* Reduced margin to bring closer to send bar */
+  }
+  
+  .suggested-response-button {
+    flex: 1;
+    margin: 0 8px; /* Adjusted margin between buttons */
+    padding: 20px 25px; /* Significantly increased padding for larger buttons */
+    background-color: var(--header-footer-color); /* White Background */
+    border: 2px solid var(--accent-color); /* Blue Accent Border */
+    border-radius: 20px; /* More pronounced rounded edges */
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    font-size: 22px; /* Significantly increased font size */
+    min-width: 160px; /* Ensures buttons are adequately sized */
+    color: var(--text-color); /* Dark Gray Text */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Adds subtle depth */
+  }
+  
+  .suggested-response-button:hover {
+    background-color: var(--hover-color); /* Darker Blue on hover */
+    border-color: var(--hover-color); /* Darker Blue Border on hover */
+    color: var(--header-footer-color); /* White Text on hover for contrast */
+    transform: scale(1.05); /* Slightly enlarge the button */
+  }
+  
+  .message-input-container {
+    display: flex;
+    align-items: flex-end;
+    padding-top: 10px; /* Maintains padding */
+    border-top: 1px solid var(--border-color); /* Medium Gray Border */
+  }
+  
+  .message-input {
+    flex: 1;
+    resize: none;
+    padding: 20px 25px; /* Increased padding */
+    border: 2px solid var(--accent-color); /* Blue Accent Border */
+    border-radius: 20px; /* Rounded edges */
+    font-size: 20px; /* Increased font size */
+    transition: height 0.3s ease, border-color 0.2s ease;
+    outline: none;
+    height: 60px; /* Increased height for better usability */
+    color: var(--text-color); /* Dark Gray Text */
+    background-color: var(--header-footer-color); /* White Background */
+  }
+  
+  .message-input::placeholder {
+    color: var(--border-color); /* Placeholder text color */
+  }
+  
+  .message-input:focus {
+    border-color: var(--hover-color); /* Darker Blue border on focus */
+  }
+  
+  .send-button {
+    margin-left: 20px; /* Increased margin */
+    padding: 15px 30px; /* Increased padding */
+    background-color: var(--secondary-color); /* Deep Purple Background */
+    border: 2px solid var(--secondary-color); /* Deep Purple Border */
+    border-radius: 20px; /* Rounded edges */
+    color: var(--header-footer-color); /* White Text */
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    font-size: 20px; /* Increased font size */
+  }
+  
+  .send-button:hover {
+    background-color: var(--hover-color); /* Darker Blue on hover */
+    border-color: var(--hover-color); /* Darker Blue Border on hover */
+    transform: scale(1.05); /* Slightly enlarge the button */
+  }
+  
+  .no-conversation {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-color); /* Dark Gray */
+  }
+  
+  .no-conversation h2 {
+    font-size: 24px; /* Increased font size */
+  }
+  
