@@ -5,7 +5,7 @@ import '../styles/ChatWindow.css';
 
 interface ChatWindowProps {
   selectedConversation: string | null;
-  conversationId: string | null;
+  senderName: string | null;
 }
 
 interface Message {
@@ -14,16 +14,14 @@ interface Message {
   responses: string[];
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ conversationId }) => {
+const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderName }) => {
   const [messageIndex, setMessageIndex] = useState<number>(0);
   const [newMessage, setNewMessage] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Socket connection reference
   const socketRef = useRef<any>(null);
 
-  // Scroll to the current message when messageIndex changes
   const scrollToCurrentMessage = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -33,53 +31,42 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ conversationId }) => {
   }, [messageIndex, messages]);
 
   useEffect(() => {
-    // Initialize Socket.IO client for the frontend namespace
     socketRef.current = io('http://localhost:5000/frontend');
 
-    // Listen for 'newMessage' event
     socketRef.current.on('newMessage', (data: any) => {
       console.log('Received newMessage:', data);
 
-      const { message, sender, responses, timestamp } = data;
+      const { message, sender, responses } = data;
       const newMessage: Message = {
         sender,
         text: message,
         responses,
       };
 
-      // Only add the message if the sender matches the current conversationId
-      if (conversationId && sender === conversationId) {
-        setMessages((prevMessages) => {
-          const updatedMessages = [...prevMessages, newMessage];
-          return updatedMessages;
-        });
-
-        // Automatically set the index to the latest message if it's new
+      if (selectedConversation && sender === selectedConversation) {
+        setMessages((prevMessages) => [...prevMessages, newMessage]);
         setMessageIndex((messages.length ?? 0) - 1);
       }
     });
 
-    // Clean up the socket connection on unmount
     return () => {
       socketRef.current.disconnect();
     };
-  }, [conversationId]);
+  }, [selectedConversation]);
 
   const handleSend = () => {
     if (newMessage.trim() === '') return;
 
-    // Emit the new message to the backend
     socketRef.current.emit('messageFromFrontend', {
       message: newMessage,
-      sender: 'You', // Adjust the sender name as needed
+      sender: 'You',
     });
 
-    // Clear the input field
     setNewMessage('');
   };
 
   const handleSuggestedResponse = (response: string) => {
-    setNewMessage(response); // Populate the text box with the suggested response
+    setNewMessage(response);
   };
 
   const currentMessage = messages[messageIndex] || null;
@@ -100,17 +87,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ conversationId }) => {
     return text.length > 50;
   };
 
-  const senderName = conversationId || 'Sender';
+  const displayName = senderName || 'Unknown Sender';
 
   return (
     <div className="chat-window">
-      {conversationId ? (
+      {selectedConversation ? (
         <>
-          {/* Header with Sender's Name */}
           <div className="chat-header">
-            <h2>{senderName}</h2>
+            <h2>{displayName}</h2>
           </div>
-          {/* Sender's Messages Display with Navigation Arrows */}
           {currentMessage ? (
             <div className="sender-messages-container">
               {messages.length > 1 && (
@@ -124,7 +109,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ conversationId }) => {
                 </button>
               )}
               <div className="sender-message">
-                <p>{currentMessage.text}</p>
+                <p><strong>{currentMessage.sender}:</strong> {currentMessage.text}</p>
               </div>
               {messages.length > 1 && (
                 <button
@@ -142,7 +127,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ conversationId }) => {
               <p>No messages available.</p>
             </div>
           )}
-          {/* Suggested Responses */}
           {currentMessage && (
             <div className="suggested-responses">
               {currentMessage.responses.map((response, index) => (
@@ -156,7 +140,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ conversationId }) => {
               ))}
             </div>
           )}
-          {/* Expandable Text Box with Send Button */}
           <div className="message-input-container">
             <textarea
               className="message-input"
@@ -169,7 +152,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ conversationId }) => {
               Send
             </button>
           </div>
-          {/* Scroll Anchor */}
           <div ref={messagesEndRef} />
         </>
       ) : (

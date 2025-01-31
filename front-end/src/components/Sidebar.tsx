@@ -22,7 +22,7 @@ interface SidebarProps {
 // Mock conversations data
 const mockConversations: { [key: string]: Conversation[] } = {
   Instagram: [
-    { id: 'insta-1', senderName: 'Braden' },
+    { id: 'insta-1', senderName: 'andrew' },
     { id: 'insta-2', senderName: 'Savannah' },
     { id: 'insta-3', senderName: 'Jared' },
   ],

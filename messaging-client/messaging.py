@@ -16,7 +16,6 @@ import signal
 import sys
 import urllib.parse  # For parsing URLs
 import socketio  # For WebSocket communication
-import requests  # For API calls to dummy endpoint
 
 # Setup Logging with INFO level for concise output
 logging.basicConfig(
@@ -33,6 +32,18 @@ seen_messages = set()
 
 # Initialize Socket.IO client
 sio = socketio.Client()
+
+@sio.event
+def connect():
+    logger.info("Connected to WebSocket server.")
+
+@sio.event
+def connect_error(data):
+    logger.error(f"Connection failed: {data}")
+
+@sio.event
+def disconnect():
+    logger.info("Disconnected from WebSocket server.")
 
 def signal_handler(sig, frame):
     logger.info("Shutting down messaging client...")
@@ -174,28 +185,15 @@ def process_new_messages(driver, messages):
         
         if sender_name == "Unknown":
             # Assume it's not 'You' and send it
-            # Emit via WebSocket
-            sio.emit('new_message', {'sender_name': sender_name, 'content': content})
+            sio.emit('newMessage', {'content': content, 'user_id': USER_ID})
             logger.info(f'Message from "Unknown" sent to back end via WebSocket: "{content}"')
         elif sender_name not in ['You', 'You sent']:
             # It's a message from someone else, send via WebSocket
-            sio.emit('new_message', {'sender_name': sender_name, 'content': content})
+            sio.emit('newMessage', {'content': content, 'user_id': USER_ID})
             logger.info(f'Message from "{sender_name}" sent to back end via WebSocket: "{content}"')
         else:
             # It's a message from 'You', skip
             logger.info("Skipping message from 'You'.")
-
-@sio.event
-def connect():
-    logger.info("Connected to WebSocket server.")
-
-@sio.event
-def connect_error(data):
-    logger.error(f"Connection failed: {data}")
-
-@sio.event
-def disconnect():
-    logger.info("Disconnected from WebSocket server.")
 
 @sio.on('response_to_send')
 def on_response_to_send(data):

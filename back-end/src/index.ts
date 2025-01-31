@@ -1,9 +1,14 @@
 // server.js
 
 import express from 'express';
+import dotenv from 'dotenv';
 import cors from 'cors';
 import http from 'http';
 import { Server } from 'socket.io';
+import { processChatCompletion } from './llm';
+import { insertQAPair } from './db';
+
+dotenv.config();
 
 const app = express();
 
@@ -14,7 +19,7 @@ app.use(express.json());
 // Create HTTP server
 const server = http.createServer(app);
 
-// Initialize Socket.IO server
+// Initialize Socket.IO server with namespaces
 const io = new Server(server, {
   cors: {
     origin: '*', // Replace with your Front End's URL in production
@@ -22,51 +27,61 @@ const io = new Server(server, {
   },
 });
 
-// Namespaces
-const messagingNamespace = io.of('/messaging');
-const frontendNamespace = io.of('/frontend');
+// Define namespaces
+const messagingNamespace = io.of('/messaging'); // For Messaging Client
+const frontendNamespace = io.of('/frontend');   // For Front End
 
-// Mock data for responses
-const mockResponses = ["Sure!", "Let me check on that.", "Can you clarify?"];
+// Initialize the message-response queue
+interface MessageQueueItem {
+  message: string;
+  responses: string[];
+}
+
+let messageQueue: MessageQueueItem[] = [];
 
 // Handle connections in the Messaging namespace
 messagingNamespace.on('connection', (socket) => {
   console.log(`Messaging Client connected: ${socket.id}`);
 
-  // Handle new messages from messaging clients
-  socket.on('newMessage', (data) => {
-    const { message, sender } = data;
+  socket.on('newMessage', async (data) => {
+    const { content, user_id } = data;
+    console.log("Received newMessage:", data);
 
-    if (!message || !sender) {
-      socket.emit('error', { error: 'Missing "message" or "sender" in "newMessage" event.' });
+    // Input validation
+    if (!content || !user_id) {
+      socket.emit('error', { error: 'Missing required fields in "newMessage" event.' });
       return;
     }
 
-    console.log(`Received message: "${message}" from sender: "${sender}"`);
+    try {
+      // Process the message to generate responses
+      const generatedResponses = await processChatCompletion(content, user_id);
 
-    // Generate mock responses
-    const generatedResponses = mockResponses;
+      if (!generatedResponses || generatedResponses.length === 0) {
+        socket.emit('error', { error: 'Failed to generate responses.' });
+        return;
+      }
 
-    // Emit message and responses to the Front End
-    frontendNamespace.emit('newMessage', { message, sender, responses: generatedResponses });
+      console.log(`Generated responses:`, generatedResponses);
 
-    // Emit message and responses back to the messaging client
-    socket.emit('messageResponses', { message, sender, responses: generatedResponses });
-  });
+      // Add the message and responses to the queue
+      messageQueue.push({
+        message: content,
+        responses: generatedResponses,
+      });
 
-  // Handle messages sent from the front end to messaging clients
-  socket.on('messageFromFrontend', (data) => {
-    const { message, sender } = data;
+      // Send the message and responses to the Front End
+      frontendNamespace.emit('newMessage', {
+        message: content,
+        responses: generatedResponses,
+      });
 
-    if (!message || !sender) {
-      socket.emit('error', { error: 'Missing "message" or "sender" in "messageFromFrontend" event.' });
-      return;
+      // Acknowledge the Messaging Client
+      socket.emit('ack', { message: 'Message processed and stored in queue.' });
+    } catch (error) {
+      console.error('Error processing message:', error);
+      socket.emit('error', { error: 'An error occurred while processing the message.' });
     }
-
-    console.log(`Message from Frontend to Messaging Client: "${message}" from "${sender}"`);
-
-    // Broadcast the message to all messaging clients
-    messagingNamespace.emit('frontendMessage', { message, sender });
   });
 
   socket.on('disconnect', () => {
@@ -74,17 +89,79 @@ messagingNamespace.on('connection', (socket) => {
   });
 });
 
-// Handle connections in the Frontend namespace
+// Handle connections in the Front End namespace
 frontendNamespace.on('connection', (socket) => {
-  console.log(`Frontend connected: ${socket.id}`);
+  console.log(`Front End connected: ${socket.id}`);
+
+  socket.on('ack', (data) => {
+    console.log(data);
+  });
+
+  socket.on('submitSelectedResponse', (data) => {
+    const { selected_response, currMessage } = data;
+
+    console.log("Received submitSelectedResponse:", data);
+
+    // Input validation
+    if (!selected_response) {
+      socket.emit('error', { error: 'Missing "selected_response".' });
+      return;
+    }
+
+    console.log(`Selected response: ${selected_response}`);
+    console.log(`Current message: ${currMessage}`);
+
+    // Acknowledge the Front End
+    socket.emit('responseSubmitted', { message: 'Selected response submitted successfully.' });
+    console.log("Response submitted to messaging client.");
+
+    // Send the selected response along with the message to the Messaging Client
+    messagingNamespace.emit('sendSelectedResponse', {
+      'selected_response': selected_response,
+      'curr_message': currMessage,
+    });
+
+    // Retrieve the message from the queue to get hashed_sender_name
+    const messageItem = messageQueue.find(
+      (item) => item.message === currMessage
+    );
+
+    let QAPair = "";
+
+    if (!currMessage) {
+      QAPair = `started conversation with: ${selected_response}`;
+    } else {
+      QAPair = `message: ${currMessage} response: ${selected_response}`;
+    }
+
+    if (messageItem) {
+      insertQAPair(
+        "pearl@easyspeak-aac.com",
+        QAPair,
+        "pearl_message_test"
+      );
+      console.log("QAPair inserted into database: ", QAPair);
+    } else {
+      console.error('Message not found in queue for message:', currMessage);
+    }
+
+    // Remove the message from the queue
+    messageQueue = messageQueue.filter(
+      (item) => item.message !== currMessage
+    );
+
+    // Optionally, send updated queue to front end
+    // frontendNamespace.emit('messageQueueUpdate', { messageQueue: messageQueue });
+
+  });
 
   socket.on('disconnect', () => {
-    console.log(`Frontend disconnected: ${socket.id}`);
+    console.log(`Front End disconnected: ${socket.id}`);
   });
 });
 
 // Start the server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
