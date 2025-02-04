@@ -123,6 +123,10 @@ def collect_new_messages_instagram(driver):
             except Exception as e:
                 logger.info(f"Skipped message element {index}: {str(e)}")
                 continue
+
+        
+        logger.info(f"Collected {len(messages)} new messages.")
+        print(messages)
                 
         return messages
         
@@ -171,7 +175,7 @@ def find_last_you_message_index(messages):
             return i
     return -1  # Return -1 if no "You" messages found
 
-def process_new_messages(driver, messages):
+def process_new_messages(messages):
     """
     Process only messages after the last 'You' message to avoid duplicates.
     """
@@ -263,14 +267,14 @@ def main():
         # Allow some time for the page to load
         time.sleep(5)
         
-        # Get current chat ID
-        current_chat_id = get_current_chat_id_instagram(driver)
-        if current_chat_id:
-            notify_chat_changed_instagram(current_chat_id)
-        
-        # Collect messages
-        messages = collect_new_messages_instagram(driver)
-        process_new_messages(driver, messages)
+        # Continuously collect and send messages until WebSocket connection is broken
+        while sio.connected:
+            current_chat_id = get_current_chat_id_instagram(driver)
+            if current_chat_id:
+                notify_chat_changed_instagram(current_chat_id)
+            messages = collect_new_messages_instagram(driver)
+            process_new_messages(messages)
+            time.sleep(5)  # Adjust the sleep time as needed
         
     except Exception as e:
         logger.exception("Error in main loop.")
