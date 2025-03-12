@@ -8,6 +8,7 @@ import '../styles/Sidebar.css';
 interface Conversation {
   id: string;
   senderName: string;
+  type: 'channel' | 'dm';
 }
 
 interface SidebarProps {
@@ -20,17 +21,19 @@ interface SidebarProps {
 }
 
 // Mock conversations data
-const mockConversations: { [key: string]: Conversation[] } = {
-  Instagram: [
-    { id: 'insta-1', senderName: 'andrew' },
-    { id: 'insta-2', senderName: 'Savannah' },
-    { id: 'insta-3', senderName: 'Jared' },
-  ],
-  X: [
-    { id: 'x-1', senderName: 'Alex' },
-    { id: 'x-2', senderName: 'Taylor' },
-    { id: 'x-3', senderName: 'Morgan' },
-  ],
+const mockConversations: { [key: string]: { channels: Conversation[], dms: Conversation[] } } = {
+  Slack: {
+    channels: [
+      { id: 'channel-1', senderName: 'general', type: 'channel' },
+      { id: 'channel-2', senderName: 'random', type: 'channel' },
+      { id: 'channel-3', senderName: 'development', type: 'channel' },
+    ],
+    dms: [
+      { id: 'dm-1', senderName: 'andrew', type: 'dm' },
+      { id: 'dm-2', senderName: 'sarah', type: 'dm' },
+      { id: 'dm-3', senderName: 'mike', type: 'dm' },
+    ],
+  },
 };
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -41,22 +44,26 @@ const Sidebar: React.FC<SidebarProps> = ({
   isSidebarExpanded,
   toggleSidebar,
 }) => {
-  const [platforms] = useState<string[]>(['Instagram', 'X']);
-  const [expandedPlatforms, setExpandedPlatforms] = useState<{ [key: string]: boolean }>({});
+  const [platforms] = useState<string[]>(['Slack']);
+  const [expandedSections, setExpandedSections] = useState<{
+    [key: string]: { platform: boolean; channels: boolean; dms: boolean }
+  }>({});
 
-  // Initialize expanded state when platforms change
   useEffect(() => {
-    const initialExpanded: { [key: string]: boolean } = {};
+    const initialExpanded: { [key: string]: { platform: boolean; channels: boolean; dms: boolean } } = {};
     platforms.forEach((platform) => {
-      initialExpanded[platform] = false; // Default to collapsed
+      initialExpanded[platform] = { platform: false, channels: false, dms: false };
     });
-    setExpandedPlatforms(initialExpanded);
+    setExpandedSections(initialExpanded);
   }, [platforms]);
 
-  const togglePlatform = (platform: string) => {
-    setExpandedPlatforms((prev) => ({
+  const toggleSection = (platform: string, section: 'platform' | 'channels' | 'dms') => {
+    setExpandedSections((prev) => ({
       ...prev,
-      [platform]: !prev[platform],
+      [platform]: {
+        ...prev[platform],
+        [section]: !prev[platform]?.[section],
+      },
     }));
   };
 
@@ -85,47 +92,73 @@ const Sidebar: React.FC<SidebarProps> = ({
       <ul className="platform-list">
         {platforms.map((platform) => (
           <li key={platform}>
-            <div
-              className={`platform-item ${platform === selectedPlatform ? 'selected' : ''}`}
-              onClick={() => onSelectPlatform(platform)}
-            >
+            <div className="platform-item">
               <div
                 className="platform-header"
-                onClick={(e) => {
-                  e.stopPropagation(); // Prevent platform selection when toggling
-                  togglePlatform(platform);
-                }}
-                role="button"
-                aria-expanded={expandedPlatforms[platform]}
-                tabIndex={0}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    togglePlatform(platform);
-                  }
-                }}
+                onClick={() => toggleSection(platform, 'platform')}
               >
-                {/* Optionally, add platform icons here */}
                 {isSidebarExpanded && <span>{platform}</span>}
                 <span className="icon">
-                  {expandedPlatforms[platform] ? <FaChevronDown /> : <FaChevronRight />}
+                  {expandedSections[platform]?.platform ? <FaChevronDown /> : <FaChevronRight />}
                 </span>
               </div>
-            </div>
-            {expandedPlatforms[platform] && isSidebarExpanded && (
-              <ul className="conversation-list">
-                {mockConversations[platform].map((conversation) => (
-                  <li
-                    key={conversation.id}
-                    className={`conversation-item ${
-                      conversation.id === selectedConversation ? 'selected' : ''
-                    }`}
-                    onClick={() => handleConversationClick(platform, conversation)}
+              
+              {expandedSections[platform]?.platform && isSidebarExpanded && (
+                <>
+                  {/* Channels Section */}
+                  <div
+                    className="section-header"
+                    onClick={() => toggleSection(platform, 'channels')}
                   >
-                    {conversation.senderName}
-                  </li>
-                ))}
-              </ul>
-            )}
+                    <span>Channels</span>
+                    <span className="icon">
+                      {expandedSections[platform]?.channels ? <FaChevronDown /> : <FaChevronRight />}
+                    </span>
+                  </div>
+                  {expandedSections[platform]?.channels && (
+                    <ul className="conversation-list">
+                      {mockConversations[platform].channels.map((channel) => (
+                        <li
+                          key={channel.id}
+                          className={`conversation-item ${
+                            channel.id === selectedConversation ? 'selected' : ''
+                          }`}
+                          onClick={() => handleConversationClick(platform, channel)}
+                        >
+                          # {channel.senderName}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {/* DMs Section */}
+                  <div
+                    className="section-header"
+                    onClick={() => toggleSection(platform, 'dms')}
+                  >
+                    <span>Direct Messages</span>
+                    <span className="icon">
+                      {expandedSections[platform]?.dms ? <FaChevronDown /> : <FaChevronRight />}
+                    </span>
+                  </div>
+                  {expandedSections[platform]?.dms && (
+                    <ul className="conversation-list">
+                      {mockConversations[platform].dms.map((dm) => (
+                        <li
+                          key={dm.id}
+                          className={`conversation-item ${
+                            dm.id === selectedConversation ? 'selected' : ''
+                          }`}
+                          onClick={() => handleConversationClick(platform, dm)}
+                        >
+                          @ {dm.senderName}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </div>
           </li>
         ))}
       </ul>

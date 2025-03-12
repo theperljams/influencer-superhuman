@@ -31,12 +31,15 @@ const io = new Server(server, {
 const messagingNamespace = io.of('/messaging'); // For Messaging Client
 const frontendNamespace = io.of('/frontend');   // For Front End
 
-// Initialize the message-response queue
+// Add this interface near the top of the file, after the imports
 interface MessageQueueItem {
   message: string;
+  timestamp: number;
   responses: string[];
+  hashed_sender_name: string;
 }
 
+// Update the message queue initialization
 let messageQueue: MessageQueueItem[] = [];
 
 // Handle connections in the Messaging namespace
@@ -44,18 +47,18 @@ messagingNamespace.on('connection', (socket) => {
   console.log(`Messaging Client connected: ${socket.id}`);
 
   socket.on('newMessage', async (data) => {
-    const { content, user_id } = data;
+    const { content, timestamp, user_id, hashed_sender_name } = data;
     console.log("Received newMessage:", data);
 
     // Input validation
-    if (!content || !user_id) {
+    if (!content || !user_id || !timestamp || !hashed_sender_name) {
       socket.emit('error', { error: 'Missing required fields in "newMessage" event.' });
       return;
     }
 
     try {
       // Process the message to generate responses
-      const generatedResponses = await processChatCompletion(content, user_id);
+      const generatedResponses = await processChatCompletion(content, user_id, hashed_sender_name, timestamp);
 
       if (!generatedResponses || generatedResponses.length === 0) {
         socket.emit('error', { error: 'Failed to generate responses.' });
@@ -64,16 +67,20 @@ messagingNamespace.on('connection', (socket) => {
 
       console.log(`Generated responses:`, generatedResponses);
 
-      // Add the message and responses to the queue
+      // Add the message, timestamp, and responses to the queue
       messageQueue.push({
         message: content,
+        timestamp: timestamp,
         responses: generatedResponses,
+        hashed_sender_name: hashed_sender_name,
       });
 
       // Send the message and responses to the Front End
       frontendNamespace.emit('newMessage', {
         message: content,
+        timestamp: timestamp,
         responses: generatedResponses,
+        hashed_sender_name: hashed_sender_name,
       });
 
       // Acknowledge the Messaging Client
@@ -82,6 +89,21 @@ messagingNamespace.on('connection', (socket) => {
       console.error('Error processing message:', error);
       socket.emit('error', { error: 'An error occurred while processing the message.' });
     }
+  });
+
+  // Listen for 'chatChanged' event from Messaging Client
+  socket.on('chatChanged', (data) => {
+    const { new_chat_id } = data;
+    console.log(`Chat changed to: ${new_chat_id}`);
+
+    // Optionally, clear the messageQueue if it's specific to a chat
+    messageQueue = [];
+
+    // Emit 'chatChanged' event to the Front End
+    frontendNamespace.emit('chatChanged', { new_chat_id });
+
+    // Acknowledge the Messaging Client
+    socket.emit('ack', { message: 'Chat change processed.' });
   });
 
   socket.on('disconnect', () => {
@@ -98,7 +120,7 @@ frontendNamespace.on('connection', (socket) => {
   });
 
   socket.on('submitSelectedResponse', (data) => {
-    const { selected_response, currMessage } = data;
+    const { selected_response, currMessage, messageTimestamp } = data;
 
     console.log("Received submitSelectedResponse:", data);
 
@@ -119,12 +141,8 @@ frontendNamespace.on('connection', (socket) => {
     messagingNamespace.emit('sendSelectedResponse', {
       'selected_response': selected_response,
       'curr_message': currMessage,
+      'message_timestamp': messageTimestamp,
     });
-
-    // Retrieve the message from the queue to get hashed_sender_name
-    const messageItem = messageQueue.find(
-      (item) => item.message === currMessage
-    );
 
     let QAPair = "";
 
@@ -134,25 +152,45 @@ frontendNamespace.on('connection', (socket) => {
       QAPair = `message: ${currMessage} response: ${selected_response}`;
     }
 
-    if (messageItem) {
+    let hashed_sender_name = "default_sender"; // Default value
+
+    if (messageTimestamp) {
+      // Retrieve the message from the queue to get hashed_sender_name
+      const messageItem = messageQueue.find(
+        (item) => item.timestamp === messageTimestamp
+      );
+
+      if (messageItem) {
+        hashed_sender_name = messageItem.hashed_sender_name;
+
+        // Insert the Q&A pair into the database
+        insertQAPair(
+          "pearl@easyspeak-aac.com",
+          QAPair,
+          "pearl_message_test",
+          messageTimestamp,
+          hashed_sender_name
+        );
+        console.log("QAPair inserted into database: ", QAPair);
+      } else {
+        console.error('Message not found in queue for timestamp:', messageTimestamp);
+      }
+
+      // Remove the message from the queue
+      messageQueue = messageQueue.filter(
+        (item) => item.timestamp !== messageTimestamp
+      );
+    } else {
+      // Insert the Q&A pair into the database
       insertQAPair(
         "pearl@easyspeak-aac.com",
         QAPair,
-        "pearl_message_test"
+        "pearl_message_test",
+        Date.now(),
+        hashed_sender_name
       );
       console.log("QAPair inserted into database: ", QAPair);
-    } else {
-      console.error('Message not found in queue for message:', currMessage);
     }
-
-    // Remove the message from the queue
-    messageQueue = messageQueue.filter(
-      (item) => item.message !== currMessage
-    );
-
-    // Optionally, send updated queue to front end
-    // frontendNamespace.emit('messageQueueUpdate', { messageQueue: messageQueue });
-
   });
 
   socket.on('disconnect', () => {
@@ -161,7 +199,7 @@ frontendNamespace.on('connection', (socket) => {
 });
 
 // Start the server
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });

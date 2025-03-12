@@ -68,14 +68,14 @@
   }
   
   .platform-header:hover {
-    background-color: var(--accent-color); /* Blue Accent on hover */
-    color: var(--header-footer-color); /* White Text */
-    border-color: var(--accent-color); /* Blue Accent Border on hover */
+    background-color: #0095FF;
+    color: var(--header-footer-color);
+    border-color: #0095FF;
   }
   
   .platform-header:focus {
     outline: none;
-    box-shadow: 0 0 0 2px var(--primary-color); /* Coral focus outline */
+    box-shadow: 0 0 0 2px #0095FF; /* Changed from coral to blue */
   }
   
   .icon {
@@ -102,21 +102,21 @@
   }
   
   .conversation-item:hover {
-    background-color: var(--accent-color); /* Blue Accent on hover */
-    color: var(--header-footer-color); /* White Text */
-    border-color: var(--accent-color); /* Blue Accent Border on hover */
+    background-color: #0095FF;
+    color: var(--header-footer-color);
+    border-color: #0095FF;
   }
   
   .selected {
-    background-color: var(--primary-color) !important; /* Coral Background for selected */
-    color: var(--header-footer-color) !important; /* White Text */
-    border-color: var(--primary-color) !important; /* Coral Border for selected */
+    background-color: #0095FF !important; /* Changed from coral to blue */
+    color: var(--header-footer-color) !important;
+    border-color: #0095FF !important;
   }
   
   .selected.conversation-item {
-    background-color: var(--primary-color) !important; /* Coral Background */
-    color: var(--header-footer-color) !important; /* White Text */
-    border-color: var(--primary-color) !important; /* Coral Border */
+    background-color: #0095FF !important; /* Changed from coral to blue */
+    color: var(--header-footer-color) !important;
+    border-color: #0095FF !important;
   }
   
   /* Hide text when sidebar is collapsed */
@@ -130,5 +130,25 @@
   
   .sidebar.collapsed .sidebar-header h3 {
     display: none;
+  }
+  
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 15px;
+    margin-left: 15px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-color);
+    transition: color 0.2s ease;
+  }
+  
+  .section-header:hover {
+    color: #0095FF;
+  }
+  
+  .conversation-item:before {
+    margin-right: 5px;
   }
   
