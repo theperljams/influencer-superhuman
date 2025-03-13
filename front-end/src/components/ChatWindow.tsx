@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { FaArrowLeft, FaArrowRight } from 'react-icons/fa';
 import io from 'socket.io-client';
 import '../styles/ChatWindow.css';
+import SocketService from '../services/socket';
 
 interface ChatWindowProps {
   selectedConversation: string | null;
@@ -9,17 +10,18 @@ interface ChatWindowProps {
 }
 
 interface Message {
-  sender: string;
-  text: string;
+  message: string;
   responses: string[];
+  timestamp: number;
+  sender: string;
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderName }) => {
   const [messageIndex, setMessageIndex] = useState<number>(0);
   const [newMessage, setNewMessage] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
+  const [status, setStatus] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-
   const socketRef = useRef<any>(null);
 
   const scrollToCurrentMessage = () => {
@@ -31,38 +33,66 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
   }, [messageIndex, messages]);
 
   useEffect(() => {
-    socketRef.current = io('http://localhost:5000/frontend');
+    const socket = SocketService.getSocket();
 
-    socketRef.current.on('newMessage', (data: any) => {
+    socket.on('newMessage', (data: any) => {
       console.log('Received newMessage:', data);
+      const { message, timestamp, responses, sender } = data;
 
-      const { message, sender, responses } = data;
-      const newMessage: Message = {
-        sender,
-        text: message,
-        responses,
-      };
+      setMessages(prevMessages => {
+        const newMessages = [...prevMessages, {
+          message,
+          responses,
+          timestamp,
+          sender
+        }];
+        newMessages.sort((a, b) => a.timestamp - b.timestamp);
+        setMessageIndex(newMessages.length - 1);
+        return newMessages;
+      });
 
-      if (selectedConversation && sender === selectedConversation) {
-        setMessages((prevMessages) => [...prevMessages, newMessage]);
-        setMessageIndex((messages.length ?? 0) - 1);
-      }
+      setStatus('New message received');
+    });
+
+    socket.on('chatChanged', () => {
+      setMessages([]);
+      setMessageIndex(0);
+      setStatus('Switched to new chat');
+    });
+
+    socket.on('error', (data: any) => {
+      setStatus(`Error: ${data.error}`);
+      console.error('Socket error:', data);
+    });
+
+    socket.on('ack', (data: any) => {
+      setStatus(data.message);
     });
 
     return () => {
-      socketRef.current.disconnect();
+      socket.off('newMessage');
+      socket.off('chatChanged');
     };
-  }, [selectedConversation]);
+  }, []);
 
   const handleSend = () => {
-    if (newMessage.trim() === '') return;
+    if (!newMessage.trim()) return;
 
-    socketRef.current.emit('messageFromFrontend', {
-      message: newMessage,
-      sender: 'You',
+    socketRef.current.emit('submitSelectedResponse', {
+      selected_response: newMessage,
+      currMessage: messages[messageIndex]?.message || '',
+      messageTimestamp: messages[messageIndex]?.timestamp || null
     });
 
     setNewMessage('');
+    setStatus('Response submitted');
+
+    if (messages[messageIndex]) {
+      setMessages(prevMessages => 
+        prevMessages.filter(msg => msg.timestamp !== messages[messageIndex].timestamp)
+      );
+      setMessageIndex(prev => Math.max(0, prev - 1));
+    }
   };
 
   const handleSuggestedResponse = (response: string) => {
@@ -109,7 +139,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
                 </button>
               )}
               <div className="sender-message">
-                <p><strong>{currentMessage.sender}:</strong> {currentMessage.text}</p>
+                <p><strong>{currentMessage.sender}:</strong> {currentMessage.message}</p>
               </div>
               {messages.length > 1 && (
                 <button

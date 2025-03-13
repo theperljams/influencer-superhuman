@@ -43,8 +43,19 @@ interface ChunkData {
   scored_chunks: Array<{ text: string }>;
 }
 
-function extractChunkText(data: ChunkData) {
-  return data.scored_chunks.map((chunk) => chunk.text);
+function extractChunkText(chunk: any): string[] {
+    // Add null check and provide default empty array
+    if (!chunk?.choices) {
+        console.log('Invalid chunk format:', chunk);
+        return [];
+    }
+
+    return chunk.choices.map((choice: any) => {
+        if (!choice?.delta?.content) {
+            return '';
+        }
+        return choice.delta.content;
+    }).filter(Boolean); // Filter out empty strings
 }
 
 // Function to generate the system prompt using chunk text

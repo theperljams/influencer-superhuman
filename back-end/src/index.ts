@@ -22,18 +22,24 @@ const server = http.createServer(app);
 // Initialize Socket.IO server with namespaces
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    origin: ["http://localhost:3000"],
     methods: ["GET", "POST"],
-    credentials: true
+    credentials: true,
+    allowedHeaders: ["*"]
   },
+  // WebSocket settings
   transports: ['websocket'],
-  path: '/socket.io',
-  allowUpgrades: false
+  allowUpgrades: false,
+  pingInterval: 10000,
+  pingTimeout: 5000,
+  cookie: false,
+  // Path settings
+  path: '/socket.io'
 });
 
-// Define namespaces
-const messagingNamespace = io.of('/messaging'); // For Messaging Client
-const frontendNamespace = io.of('/frontend');   // For Front End
+// Configure namespaces
+const messagingNamespace = io.of('/messaging');
+const frontendNamespace = io.of('/frontend');
 
 // Add this interface near the top of the file, after the imports
 interface MessageQueueItem {
@@ -55,46 +61,56 @@ interface WorkspaceData {
 
 // Handle connections in the Messaging namespace
 messagingNamespace.on('connection', (socket) => {
-  console.log(`Messaging Client connected: ${socket.id}`);
+  console.log('Messaging client connected:', socket.id);
 
   socket.on('newMessage', async (data) => {
     const { content, timestamp, user_id, hashed_sender_name } = data;
     console.log("Received newMessage:", data);
 
-    // Input validation
-    if (!content || !user_id || !timestamp || !hashed_sender_name) {
-      socket.emit('error', { error: 'Missing required fields in "newMessage" event.' });
-      return;
-    }
-
     try {
-      // Process the message to generate responses
+      // Comment out real processing
+      /*
       const generatedResponses = await processChatCompletion(content, user_id, hashed_sender_name, timestamp);
 
       if (!generatedResponses || generatedResponses.length === 0) {
         socket.emit('error', { error: 'Failed to generate responses.' });
         return;
       }
+      */
 
-      console.log(`Generated responses:`, generatedResponses);
+      // Emit dummy responses instead
+      const dummyResponses = [
+        "That's a great question! Let me help you with that.",
+        "Here's what I think would work best...",
+        "Have you considered trying this approach?"
+      ];
 
-      // Add the message, timestamp, and responses to the queue
+      // Add message to queue with dummy responses
       messageQueue.push({
         message: content,
         timestamp: timestamp,
-        responses: generatedResponses,
+        responses: dummyResponses,
         hashed_sender_name: hashed_sender_name,
       });
 
-      // Send the message and responses to the Front End
+      // Send to frontend
       frontendNamespace.emit('newMessage', {
         message: content,
         timestamp: timestamp,
-        responses: generatedResponses,
+        responses: dummyResponses,
         hashed_sender_name: hashed_sender_name,
       });
 
-      // Acknowledge the Messaging Client
+      // Comment out DB operations
+      /*
+      await insertQAPair({
+        question: content,
+        answer: selectedResponse,
+        timestamp: timestamp,
+        user_id: user_id
+      });
+      */
+
       socket.emit('ack', { message: 'Message processed and stored in queue.' });
     } catch (error) {
       console.error('Error processing message:', error);
@@ -130,7 +146,7 @@ messagingNamespace.on('connection', (socket) => {
 
 // Handle connections in the Front End namespace
 frontendNamespace.on('connection', (socket) => {
-  console.log(`Front End connected: ${socket.id}`);
+  console.log('Frontend client connected:', socket.id);
 
   socket.on('ack', (data) => {
     console.log(data);

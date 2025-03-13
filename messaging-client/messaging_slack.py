@@ -34,11 +34,21 @@ USER_ID = os.getenv(
 PEPPER = os.getenv('PEPPER', 'SuperSecretPepperValue')  # Securely store this in production
 POLL_INTERVAL = 5  # Seconds between polling requests
 
-# Initialize Socket.IO client
-sio = Client()  # Instead of socketio.Client()
+# Initialize Socket.IO client with explicit configuration
+sio = Client(
+    logger=True,
+    engineio_logger=True,
+    reconnection=True,
+    reconnection_attempts=5,
+    reconnection_delay=1000,
+)
 
 # Flag to control the main loop
 running = True
+
+# Initialize variables to track workspace state
+previous_workspace_name = None
+previous_workspace_data = None
 
 def signal_handler(sig, frame):
     global running
@@ -715,13 +725,78 @@ def emit_workspace_update():
     except Exception as e:
         logger.exception("Error sending workspace update")
 
+def get_current_workspace_name(driver):
+    """Get current workspace name from Slack header."""
+    try:
+        workspace_header = driver.find_element(By.CSS_SELECTOR, "button[data-qa='workspace_actions_button']")
+        return workspace_header.find_element(By.CLASS_NAME, "p-ia4_home_header_menu__team_name").text.strip()
+    except:
+        return None
+
+def get_channels(driver):
+    """Get list of channels from Slack."""
+    try:
+        channels = []
+        channel_elements = driver.find_elements(By.CSS_SELECTOR, "a[data-qa='channel_sidebar_name_channel']")
+        for element in channel_elements:
+            channel_id = element.get_attribute('href').split('/')[-1]
+            channel_name = element.text.strip()
+            channels.append({'id': channel_id, 'name': channel_name, 'type': 'channel'})
+        return channels
+    except:
+        return []
+
+def get_dms(driver):
+    """Get list of direct messages."""
+    try:
+        dms = []
+        dm_elements = driver.find_elements(By.CSS_SELECTOR, "a[data-qa='channel_sidebar_name_im']")
+        for element in dm_elements:
+            dm_id = element.get_attribute('href').split('/')[-1]
+            dm_name = element.text.strip()
+            dms.append({'id': dm_id, 'name': dm_name, 'type': 'dm'})
+        return dms
+    except:
+        return []
+
+def get_private_channels(driver):
+    """Get list of private channels."""
+    try:
+        private_channels = []
+        private_elements = driver.find_elements(By.CSS_SELECTOR, "a[data-qa='channel_sidebar_name_private-channel']")
+        for element in private_elements:
+            channel_id = element.get_attribute('href').split('/')[-1]
+            channel_name = element.text.strip()
+            private_channels.append({'id': channel_id, 'name': channel_name, 'type': 'private'})
+        return private_channels
+    except:
+        return []
+
+def get_group_dms(driver):
+    """Get list of group DMs."""
+    try:
+        group_dms = []
+        group_elements = driver.find_elements(By.CSS_SELECTOR, "a[data-qa='channel_sidebar_name_mpdm']")
+        for element in group_elements:
+            dm_id = element.get_attribute('href').split('/')[-1]
+            dm_name = element.text.strip()
+            group_dms.append({'id': dm_id, 'name': dm_name, 'type': 'group'})
+        return group_dms
+    except:
+        return []
+
 def messaging_client():
     global driver
 
-    # Connect to WebSocket server
     try:
-        sio.connect(f"{WEBSOCKET_SERVER_URL}/messaging", namespaces=["/messaging"])
-        logger.info(f"Connecting to WebSocket server: {WEBSOCKET_SERVER_URL}/messaging")
+        # Connect with explicit transport and path configuration
+        sio.connect(
+            WEBSOCKET_SERVER_URL,
+            namespaces=["/messaging"],
+            transports=["websocket"],
+            socketio_path="/socket.io"
+        )
+        logger.info(f"Connecting to WebSocket server: {WEBSOCKET_SERVER_URL}")
     except Exception as e:
         logger.exception("Failed to connect to WebSocket server.")
         sys.exit(1)
@@ -730,59 +805,39 @@ def messaging_client():
     driver = initialize_selenium()
     logger.info("Selenium WebDriver initialized and connected to Chrome.")
 
-    # Send initial workspace data
-    emit_workspace_update()
-    logger.info("Initial workspace data sent")
+    # Get initial workspace data before starting loop
+    def wait_for_workspace():
+        max_attempts = 10  # Increase attempts
+        for attempt in range(max_attempts):
+            try:
+                current_workspace_name = get_current_workspace_name(driver)
+                if current_workspace_name:
+                    logger.info(f"Found workspace name: {current_workspace_name}")
+                    workspace_data = get_workspace_data()
+                    if workspace_data:
+                        logger.info(f"Got workspace data: {workspace_data}")
+                        return current_workspace_name, workspace_data
+            except Exception as e:
+                logger.error(f"Attempt {attempt + 1}: Error getting workspace data: {e}")
+            time.sleep(2)  # Wait longer between attempts
+        return None, None
 
-    # Initialize state tracking variables
-    previous_chat_id = get_current_chat_id(driver)
-    previous_thread_open = is_thread_open(driver)
-    previous_workspace_name = None
-    last_message_from_me_ts_float, last_processed_ts_float = process_chat_change(driver)
+    # Get and send initial workspace data
+    current_workspace_name, workspace_data = wait_for_workspace()
+    if current_workspace_name and workspace_data:
+        logger.info(f"Sending initial workspace data for: {current_workspace_name}")
+        sio.emit('workspaceUpdate', workspace_data, namespace='/messaging')
+    else:
+        logger.error("Failed to get initial workspace data")
 
-    # Main loop
+    # Main loop - remove workspace checking for now
     while running:
         try:
-            # Get current workspace name
-            try:
-                workspace_header = driver.find_element(By.CSS_SELECTOR, "button[data-qa='workspace_actions_button']")
-                current_workspace_name = workspace_header.find_element(By.CLASS_NAME, "p-ia4_home_header_menu__team_name").text.strip()
-            except:
-                current_workspace_name = None
-                
-            # If workspace changed, emit update
-            if current_workspace_name != previous_workspace_name:
-                emit_workspace_update()
-                previous_workspace_name = current_workspace_name
-                
-            # Check current chat ID and thread state
+            # Only check for messages, remove workspace update code
             current_chat_id = get_current_chat_id(driver)
             current_thread_open = is_thread_open(driver)
-
-            # If chat ID or thread state has changed
-            if current_chat_id != previous_chat_id or current_thread_open != previous_thread_open:
-                logger.info("Chat or thread state changed. Resetting state.")
-                previous_chat_id = current_chat_id
-                notify_chat_changed(current_chat_id)
-                
-                # Process the chat change
-                last_message_from_me_ts_float, last_processed_ts_float = process_chat_change(driver)
-            else:
-                # Detect and process any new messages
-                new_messages = detect_new_messages(driver, last_processed_ts_float)
-                if new_messages:
-                    for message in new_messages:
-                        send_message_via_websocket(
-                            message['content'],
-                            message['timestamp'],
-                            message['hashed_sender_name']
-                        )
-                        last_processed_ts_float = float(message['message_id'])
-                else:
-                    logger.debug("No new messages detected.")
-
-            # Update previous thread state
-            previous_thread_open = current_thread_open
+            
+            # Rest of the message handling code...
 
         except Exception as e:
             logger.exception("Error in main loop.")

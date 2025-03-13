@@ -205,3 +205,9 @@
     user-select: none;
   }
   
+  .status-indicator {
+    font-size: 0.8em;
+    color: #666;
+    margin-left: 8px;
+  }
+  

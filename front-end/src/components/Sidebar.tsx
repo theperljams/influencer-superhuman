@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { FaChevronDown, FaChevronRight, FaBars } from 'react-icons/fa';
 import '../styles/Sidebar.css';
 import io from 'socket.io-client';
+import SocketService from '../services/socket';
 
 // Define the shape of a conversation
 interface Conversation {
@@ -22,14 +23,18 @@ interface Workspace {
 interface WorkspaceData {
   name: string;
   channels: Array<{ id: string; name: string; type: 'channel' }>;
-  privateChannels: Array<{ id: string; name: string; type: 'private-channel' }>;
   dms: Array<{ id: string; name: string; type: 'dm' }>;
-  groupDms: Array<{ 
-    id: string; 
-    name: string; 
-    type: 'group-dm';
-    participants: string[];
-  }>;
+  privateChannels: Array<{ id: string; name: string; type: 'private' }>;
+  groupDms: Array<{ id: string; name: string; participants: string[]; type: 'group' }>;
+}
+
+interface ExpandedState {
+  platform: boolean;
+  workspace: { [key: string]: boolean };
+  channels: { [key: string]: boolean };
+  dms: { [key: string]: boolean };
+  privateChannels: { [key: string]: boolean };
+  groupDms: { [key: string]: boolean };
 }
 
 interface SidebarProps {
@@ -50,94 +55,89 @@ const Sidebar: React.FC<SidebarProps> = ({
   toggleSidebar,
 }) => {
   const [platforms] = useState<string[]>(['Slack']);
-  const [expandedSections, setExpandedSections] = useState<{
-    [key: string]: { 
-      platform: boolean;
-      workspaces: { 
-        [key: string]: { 
-          workspace: boolean; 
-          channels: boolean; 
-          dms: boolean;
-          privateChannels: boolean;
-          groupDms: boolean;
-        }
-      };
-    }
-  }>({});
+  const [expandedState, setExpandedState] = useState<ExpandedState>({
+    platform: false,
+    workspace: {},
+    channels: {},
+    dms: {},
+    privateChannels: {},
+    groupDms: {}
+  });
+  const [workspaces, setWorkspaces] = useState<{ [key: string]: WorkspaceData }>({});
+  const [status, setStatus] = useState<string>('');
   const sidebarRef = useRef<HTMLDivElement>(null);
   const [isResizing, setIsResizing] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(250);
-  const [workspaces, setWorkspaces] = useState<{ [key: string]: WorkspaceData }>({});
 
-  // Initialize expandedSections when workspaces change
-  useEffect(() => {
-    const initialExpanded: any = {};
-    platforms.forEach((platform) => {
-      initialExpanded[platform] = {
-        platform: false,
-        workspaces: {},
-      };
-      // Initialize workspace sections for each workspace
-      Object.keys(workspaces).forEach((workspaceName) => {
-        initialExpanded[platform].workspaces[workspaceName] = {
-          workspace: false,
-          channels: false,
-          dms: false,
-          privateChannels: false,
-          groupDms: false,
-        };
-      });
-    });
-    setExpandedSections(initialExpanded);
-  }, [platforms, workspaces]); // Add workspaces as dependency
+  // Remove the useEffect for expandedSections initialization
 
   useEffect(() => {
-    const socket = io('http://localhost:3001/frontend', {
-      transports: ['websocket'],
-      upgrade: false,
-      reconnection: true,
-      forceNew: true,
-      path: '/socket.io'
-    });
-
+    const socket = SocketService.getSocket();
+    
     socket.on('connect', () => {
       console.log('Connected to WebSocket server');
-    });
-
-    socket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
+      setStatus('Connected');
     });
 
     socket.on('workspaceUpdate', (data: WorkspaceData) => {
+      console.log('Received workspace update:', data);
       setWorkspaces(prev => ({
         ...prev,
-        [selectedPlatform || 'Slack']: data
+        [data.name]: data
       }));
+      setStatus('Workspace updated');
+    });
+
+    socket.on('error', (error: any) => {
+      console.error('Socket error:', error);
+      setStatus(`Error: ${error.message}`);
+    });
+
+    socket.on('disconnect', (reason: string) => {
+      console.log('Disconnected:', reason);
+      setStatus(`Disconnected: ${reason}`);
     });
 
     return () => {
-      socket.disconnect();
+      // Only remove listeners, don't disconnect
+      socket.off('connect');
+      socket.off('workspaceUpdate');
+      socket.off('error');
+      socket.off('disconnect');
     };
-  }, [selectedPlatform]);
+  }, []);
 
   const toggleSection = (
-    platform: string,
     section: 'platform' | 'workspace' | 'channels' | 'dms' | 'privateChannels' | 'groupDms',
-    workspaceName?: string
+    id?: string
   ) => {
-    setExpandedSections(prev => {
-      const newState = { ...prev };
+    console.log('Toggling:', section, id);
+    setExpandedState(prev => {
       if (section === 'platform') {
-        newState[platform].platform = !prev[platform].platform;
-      } else if (workspaceName) {
-        newState[platform].workspaces[workspaceName][section] = 
-          !prev[platform].workspaces[workspaceName][section];
+        return { ...prev, platform: !prev.platform };
       }
-      return newState;
+      if (id) {
+        return {
+          ...prev,
+          [section]: {
+            ...prev[section],
+            [id]: !prev[section][id]
+          }
+        };
+      }
+      return prev;
     });
   };
 
-  const handleConversationClick = (platform: string, conversation: { id: string; name: string; type: string }) => {
+  const handleConversationClick = (
+    platform: string, 
+    conversation: { 
+      id: string; 
+      name: string; 
+      type: 'channel' | 'private' | 'dm' | 'group';
+      participants?: string[];
+    }
+  ) => {
     onSelectConversation(conversation.id, conversation.name);
     if (!isSidebarExpanded) {
       toggleSidebar();
@@ -174,9 +174,13 @@ const Sidebar: React.FC<SidebarProps> = ({
         transition: isResizing ? 'none' : 'width 0.3s ease'
       }}
     >
-      {/* Sidebar Header with Toggle Button */}
       <div className="sidebar-header">
-        {isSidebarExpanded && <h3>Platforms</h3>}
+        {isSidebarExpanded && (
+          <>
+            <h3>Platforms</h3>
+            <span className="status-indicator">{status}</span>
+          </>
+        )}
         <button
           className="toggle-button"
           onClick={toggleSidebar}
@@ -193,43 +197,41 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div className="platform-item">
               <div
                 className="platform-header"
-                onClick={() => toggleSection(platform, 'platform')}
+                onClick={() => toggleSection('platform')}
               >
                 {isSidebarExpanded && <span>{platform}</span>}
                 <span className="icon">
-                  {expandedSections[platform]?.platform ? <FaChevronDown /> : <FaChevronRight />}
+                  {expandedState.platform ? <FaChevronDown /> : <FaChevronRight />}
                 </span>
               </div>
               
-              {expandedSections[platform]?.platform && isSidebarExpanded && (
+              {expandedState.platform && isSidebarExpanded && (
                 <ul className="workspace-list">
                   {Object.entries(workspaces).map(([name, workspace]) => (
                     <li key={name} className="workspace-item">
                       <div
                         className="workspace-header"
-                        onClick={() => toggleSection(platform, 'workspace', name)}
+                        onClick={() => toggleSection('workspace', name)}
                       >
                         <span>{name}</span>
                         <span className="icon">
-                          {expandedSections[platform]?.workspaces[name]?.workspace ? 
-                            <FaChevronDown /> : <FaChevronRight />}
+                          {expandedState.workspace[name] ? <FaChevronDown /> : <FaChevronRight />}
                         </span>
                       </div>
 
-                      {expandedSections[platform]?.workspaces[name]?.workspace && (
+                      {expandedState.workspace[name] && (
                         <>
                           {/* Channels Section */}
                           <div
                             className="section-header"
-                            onClick={() => toggleSection(platform, 'channels', name)}
+                            onClick={() => toggleSection('channels', name)}
                           >
                             <span>Channels</span>
                             <span className="icon">
-                              {expandedSections[platform]?.workspaces[name]?.channels ? 
-                                <FaChevronDown /> : <FaChevronRight />}
+                              {expandedState.channels[name] ? <FaChevronDown /> : <FaChevronRight />}
                             </span>
                           </div>
-                          {expandedSections[platform]?.workspaces[name]?.channels && (
+                          {expandedState.channels[name] && (
                             <ul className="conversation-list">
                               {workspace.channels.map((channel) => (
                                 <li
@@ -248,15 +250,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                           {/* DMs Section */}
                           <div
                             className="section-header"
-                            onClick={() => toggleSection(platform, 'dms', name)}
+                            onClick={() => toggleSection('dms', name)}
                           >
                             <span>Direct Messages</span>
                             <span className="icon">
-                              {expandedSections[platform]?.workspaces[name]?.dms ? 
-                                <FaChevronDown /> : <FaChevronRight />}
+                              {expandedState.dms[name] ? <FaChevronDown /> : <FaChevronRight />}
                             </span>
                           </div>
-                          {expandedSections[platform]?.workspaces[name]?.dms && (
+                          {expandedState.dms[name] && (
                             <ul className="conversation-list">
                               {workspace.dms.map((dm) => (
                                 <li
@@ -272,26 +273,25 @@ const Sidebar: React.FC<SidebarProps> = ({
                             </ul>
                           )}
 
-                          {/* Private Channels Section */}
+                          {/* Add after the DMs section */}
                           <div
                             className="section-header"
-                            onClick={() => toggleSection(platform, 'privateChannels', name)}
+                            onClick={() => toggleSection('privateChannels', name)}
                           >
                             <span>Private Channels</span>
                             <span className="icon">
-                              {expandedSections[platform]?.workspaces[name]?.privateChannels ? 
-                                <FaChevronDown /> : <FaChevronRight />}
+                              {expandedState.privateChannels[name] ? <FaChevronDown /> : <FaChevronRight />}
                             </span>
                           </div>
-                          {expandedSections[platform]?.workspaces[name]?.privateChannels && (
+                          {expandedState.privateChannels[name] && (
                             <ul className="conversation-list">
-                              {workspace.privateChannels.map((channel) => (
+                              {workspace.privateChannels?.map((channel) => (
                                 <li
                                   key={channel.id}
                                   className={`conversation-item ${
                                     channel.id === selectedConversation ? 'selected' : ''
                                   }`}
-                                  onClick={() => handleConversationClick(platform, channel)}
+                                  onClick={() => handleConversationClick(platform, { ...channel, type: 'private' })}
                                 >
                                   🔒 {channel.name}
                                 </li>
@@ -299,28 +299,26 @@ const Sidebar: React.FC<SidebarProps> = ({
                             </ul>
                           )}
 
-                          {/* Group DMs Section */}
                           <div
                             className="section-header"
-                            onClick={() => toggleSection(platform, 'groupDms', name)}
+                            onClick={() => toggleSection('groupDms', name)}
                           >
                             <span>Group DMs</span>
                             <span className="icon">
-                              {expandedSections[platform]?.workspaces[name]?.groupDms ? 
-                                <FaChevronDown /> : <FaChevronRight />}
+                              {expandedState.groupDms[name] ? <FaChevronDown /> : <FaChevronRight />}
                             </span>
                           </div>
-                          {expandedSections[platform]?.workspaces[name]?.groupDms && (
+                          {expandedState.groupDms[name] && (
                             <ul className="conversation-list">
-                              {workspace.groupDms.map((dm) => (
+                              {workspace.groupDms?.map((dm) => (
                                 <li
                                   key={dm.id}
                                   className={`conversation-item ${
                                     dm.id === selectedConversation ? 'selected' : ''
                                   }`}
-                                  onClick={() => handleConversationClick(platform, dm)}
+                                  onClick={() => handleConversationClick(platform, { ...dm, type: 'group' })}
                                 >
-                                  👥 {dm.participants.join(', ')}
+                                  👥 {dm.name}
                                 </li>
                               ))}
                             </ul>
