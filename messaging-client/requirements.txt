@@ -1,0 +1,4 @@
+python-socketio
+selenium
+python-dotenv
+requests

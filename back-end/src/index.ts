@@ -22,9 +22,13 @@ const server = http.createServer(app);
 // Initialize Socket.IO server with namespaces
 const io = new Server(server, {
   cors: {
-    origin: '*', // Replace with your Front End's URL in production
-    methods: ['GET', 'POST'],
+    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    methods: ["GET", "POST"],
+    credentials: true
   },
+  transports: ['websocket'],
+  path: '/socket.io',
+  allowUpgrades: false
 });
 
 // Define namespaces
@@ -41,6 +45,13 @@ interface MessageQueueItem {
 
 // Update the message queue initialization
 let messageQueue: MessageQueueItem[] = [];
+
+// Add interface for workspace data
+interface WorkspaceData {
+  name: string;
+  channels: Array<{ id: string; name: string }>;
+  dms: Array<{ id: string; name: string }>;
+}
 
 // Handle connections in the Messaging namespace
 messagingNamespace.on('connection', (socket) => {
@@ -104,6 +115,12 @@ messagingNamespace.on('connection', (socket) => {
 
     // Acknowledge the Messaging Client
     socket.emit('ack', { message: 'Chat change processed.' });
+  });
+
+  socket.on('workspaceUpdate', (data: WorkspaceData) => {
+    console.log('Received workspace update:', data);
+    // Forward to frontend namespace
+    frontendNamespace.emit('workspaceUpdate', data);
   });
 
   socket.on('disconnect', () => {
@@ -199,7 +216,7 @@ frontendNamespace.on('connection', (socket) => {
 });
 
 // Start the server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
