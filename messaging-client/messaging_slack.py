@@ -785,11 +785,66 @@ def get_group_dms(driver):
     except:
         return []
 
+def get_user_input(prompt: str) -> str:
+    """Get user input with proper error handling."""
+    try:
+        return input(prompt).strip().lower()
+    except EOFError:
+        return 'n'
+
+def wait_for_workspace():
+    """Wait for workspace data to be available."""
+    max_attempts = 10
+    for attempt in range(max_attempts):
+        try:
+            current_workspace_name = get_current_workspace_name(driver)
+            if current_workspace_name:
+                logger.info(f"Found workspace name: {current_workspace_name}")
+                workspace_data = get_workspace_data()
+                if workspace_data:
+                    logger.info(f"Got workspace data: {workspace_data}")
+                    return current_workspace_name, workspace_data
+        except Exception as e:
+            logger.error(f"Attempt {attempt + 1}: Error getting workspace data: {e}")
+        time.sleep(2)
+    return None, None
+
+def collect_workspaces():
+    """Collect workspace data interactively."""
+    workspaces = {}
+    
+    while True:
+        # Get initial workspace data
+        current_workspace_name, workspace_data = wait_for_workspace()
+        
+        if current_workspace_name and workspace_data:
+            logger.info(f"Found workspace: {current_workspace_name}")
+            workspaces[current_workspace_name] = workspace_data
+            
+            # Emit workspace data to frontend
+            sio.emit('workspaceUpdate', workspace_data, namespace='/messaging')
+            
+            # Ask user if they want to add another workspace
+            response = get_user_input("\nWould you like to add another workspace? (y/n): ")
+            
+            if response != 'y':
+                logger.info("Workspace collection completed.")
+                break
+            else:
+                logger.info("Please switch to another workspace in Chrome...")
+                time.sleep(15)  # Give user time to switch workspaces
+        else:
+            logger.error("Failed to get workspace data")
+            if get_user_input("Would you like to retry? (y/n): ") != 'y':
+                break
+
+    return workspaces
+
 def messaging_client():
     global driver
 
     try:
-        # Connect with explicit transport and path configuration
+        # Connect to WebSocket server
         sio.connect(
             WEBSOCKET_SERVER_URL,
             namespaces=["/messaging"],
@@ -805,38 +860,21 @@ def messaging_client():
     driver = initialize_selenium()
     logger.info("Selenium WebDriver initialized and connected to Chrome.")
 
-    # Get initial workspace data before starting loop
-    def wait_for_workspace():
-        max_attempts = 10  # Increase attempts
-        for attempt in range(max_attempts):
-            try:
-                current_workspace_name = get_current_workspace_name(driver)
-                if current_workspace_name:
-                    logger.info(f"Found workspace name: {current_workspace_name}")
-                    workspace_data = get_workspace_data()
-                    if workspace_data:
-                        logger.info(f"Got workspace data: {workspace_data}")
-                        return current_workspace_name, workspace_data
-            except Exception as e:
-                logger.error(f"Attempt {attempt + 1}: Error getting workspace data: {e}")
-            time.sleep(2)  # Wait longer between attempts
-        return None, None
+    # Collect all workspaces interactively
+    logger.info("Starting workspace collection...")
+    workspaces = collect_workspaces()
+    
+    if not workspaces:
+        logger.error("No workspaces collected. Exiting...")
+        sys.exit(1)
+    
+    logger.info(f"Collected {len(workspaces)} workspace(s)")
 
-    # Get and send initial workspace data
-    current_workspace_name, workspace_data = wait_for_workspace()
-    if current_workspace_name and workspace_data:
-        logger.info(f"Sending initial workspace data for: {current_workspace_name}")
-        sio.emit('workspaceUpdate', workspace_data, namespace='/messaging')
-    else:
-        logger.error("Failed to get initial workspace data")
-
-    # Main loop - remove workspace checking for now
+    # Main loop - now only handles messages
     while running:
         try:
-            # Only check for messages, remove workspace update code
             current_chat_id = get_current_chat_id(driver)
             current_thread_open = is_thread_open(driver)
-            
             # Rest of the message handling code...
 
         except Exception as e:
