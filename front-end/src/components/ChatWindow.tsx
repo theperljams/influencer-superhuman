@@ -7,6 +7,7 @@ import SocketService from '../services/socket';
 interface ChatWindowProps {
   selectedConversation: string | null;
   senderName: string | null;
+  setIsSending: (sending: boolean) => void;
 }
 
 interface Message {
@@ -16,13 +17,14 @@ interface Message {
   sender: string;
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderName }) => {
+const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderName, setIsSending }) => {
   const [messageIndex, setMessageIndex] = useState<number>(0);
   const [newMessage, setNewMessage] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const socketRef = useRef<any>(null);
+  const [isSendingState, setIsSendingState] = useState<boolean>(false);
 
   const scrollToCurrentMessage = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -34,6 +36,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
 
   useEffect(() => {
     const socket = SocketService.getSocket();
+    socketRef.current = socket;
 
     socket.on('newMessage', (data: any) => {
       console.log('Received newMessage:', data);
@@ -76,7 +79,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
   }, []);
 
   const handleSend = () => {
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim() || isSendingState) return;
+
+    setIsSendingState(true);
+    setIsSending(true);
+    setStatus('Sending message...');
 
     socketRef.current.emit('submitSelectedResponse', {
       selected_response: newMessage,
@@ -84,15 +91,19 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
       messageTimestamp: messages[messageIndex]?.timestamp || null
     });
 
-    setNewMessage('');
-    setStatus('Response submitted');
-
-    if (messages[messageIndex]) {
-      setMessages(prevMessages => 
-        prevMessages.filter(msg => msg.timestamp !== messages[messageIndex].timestamp)
-      );
-      setMessageIndex(prev => Math.max(0, prev - 1));
-    }
+    socketRef.current.once('responseSubmitted', () => {
+      setNewMessage('');
+      setStatus('Message sent');
+      setIsSendingState(false);
+      setIsSending(false);
+      
+      if (messages[messageIndex]) {
+        setMessages(prevMessages => 
+          prevMessages.filter(msg => msg.timestamp !== messages[messageIndex].timestamp)
+        );
+        setMessageIndex(prev => Math.max(0, prev - 1));
+      }
+    });
   };
 
   const handleSuggestedResponse = (response: string) => {
@@ -177,9 +188,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder="Type your message..."
               rows={isExpanded(newMessage) ? 3 : 1}
+              disabled={isSendingState}
             />
-            <button className="send-button" onClick={handleSend}>
-              Send
+            <button 
+              className={`send-button ${isSendingState ? 'sending' : ''}`} 
+              onClick={handleSend}
+              disabled={isSendingState}
+            >
+              {isSendingState ? 'Sending...' : 'Send'}
             </button>
           </div>
           <div ref={messagesEndRef} />

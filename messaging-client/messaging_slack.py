@@ -658,51 +658,11 @@ def get_workspace_data():
         workspace_header = driver.find_element(By.CSS_SELECTOR, "button[data-qa='workspace_actions_button']")
         workspace_data['name'] = workspace_header.find_element(By.CLASS_NAME, "p-ia4_home_header_menu__team_name").text.strip()
         
-        # Get channels
-        channels = driver.find_elements(By.CSS_SELECTOR, "div.p-channel_sidebar__channel[data-qa-channel-sidebar-channel-type='channel']")
-        for channel in channels:
-            name = channel.find_element(By.CLASS_NAME, "p-channel_sidebar__name").text.strip()
-            channel_id = channel.get_attribute('data-qa-channel-sidebar-channel-id')
-            workspace_data['channels'].append({
-                'id': channel_id,
-                'name': name,
-                'type': 'channel'
-            })
-
-        # Get private channels
-        private_channels = driver.find_elements(By.CSS_SELECTOR, "div.p-channel_sidebar__channel[data-qa-channel-sidebar-channel-type='private']")
-        for channel in private_channels:
-            name = channel.find_element(By.CLASS_NAME, "p-channel_sidebar__name").text.strip()
-            channel_id = channel.get_attribute('data-qa-channel-sidebar-channel-id')
-            workspace_data['privateChannels'].append({
-                'id': channel_id,
-                'name': name,
-                'type': 'private-channel'
-            })
-
-        # Get DMs
-        dms = driver.find_elements(By.CSS_SELECTOR, "div.p-channel_sidebar__channel[data-qa-channel-sidebar-channel-type='im']")
-        for dm in dms:
-            name = channel.find_element(By.CLASS_NAME, "p-channel_sidebar__name").text.strip()
-            dm_id = dm.get_attribute('data-qa-channel-sidebar-channel-id')
-            workspace_data['dms'].append({
-                'id': dm_id,
-                'name': name,
-                'type': 'dm'
-            })
-
-        # Get group DMs
-        group_dms = driver.find_elements(By.CSS_SELECTOR, "div.p-channel_sidebar__channel[data-qa-channel-sidebar-channel-type='mpim']")
-        for gdm in group_dms:
-            name = gdm.find_element(By.CLASS_NAME, "p-channel_sidebar__name").text.strip()
-            gdm_id = gdm.get_attribute('data-qa-channel-sidebar-channel-id')
-            participants = [n.strip() for n in name.split(',')]
-            workspace_data['groupDms'].append({
-                'id': gdm_id,
-                'name': name,
-                'type': 'group-dm',
-                'participants': participants
-            })
+        # Use our helper functions instead of duplicating code
+        workspace_data['channels'] = get_channels(driver)
+        workspace_data['dms'] = get_dms(driver)
+        workspace_data['privateChannels'] = get_private_channels(driver)
+        workspace_data['groupDms'] = get_group_dms(driver)
 
     except Exception as e:
         logger.error(f"Error getting workspace data: {e}")
@@ -737,52 +697,56 @@ def get_channels(driver):
     """Get list of channels from Slack."""
     try:
         channels = []
-        channel_elements = driver.find_elements(By.CSS_SELECTOR, "a[data-qa='channel_sidebar_name_channel']")
+        channel_elements = driver.find_elements(By.CSS_SELECTOR, "div.p-channel_sidebar__channel[data-qa-channel-sidebar-channel-type='channel']")
         for element in channel_elements:
-            channel_id = element.get_attribute('href').split('/')[-1]
-            channel_name = element.text.strip()
-            channels.append({'id': channel_id, 'name': channel_name, 'type': 'channel'})
+            name = element.find_element(By.CLASS_NAME, "p-channel_sidebar__name").text.strip()
+            channel_id = element.get_attribute('data-qa-channel-sidebar-channel-id')
+            channels.append({'id': channel_id, 'name': name, 'type': 'channel'})
         return channels
-    except:
+    except Exception as e:
+        logger.error(f"Error getting channels: {e}")
         return []
 
 def get_dms(driver):
     """Get list of direct messages."""
     try:
         dms = []
-        dm_elements = driver.find_elements(By.CSS_SELECTOR, "a[data-qa='channel_sidebar_name_im']")
+        dm_elements = driver.find_elements(By.CSS_SELECTOR, "div.p-channel_sidebar__channel[data-qa-channel-sidebar-channel-type='im']")
         for element in dm_elements:
-            dm_id = element.get_attribute('href').split('/')[-1]
-            dm_name = element.text.strip()
-            dms.append({'id': dm_id, 'name': dm_name, 'type': 'dm'})
+            name = element.find_element(By.CLASS_NAME, "p-channel_sidebar__name").text.strip()
+            dm_id = element.get_attribute('data-qa-channel-sidebar-channel-id')
+            dms.append({'id': dm_id, 'name': name, 'type': 'dm'})
         return dms
-    except:
+    except Exception as e:
+        logger.error(f"Error getting DMs: {e}")
         return []
 
 def get_private_channels(driver):
     """Get list of private channels."""
     try:
         private_channels = []
-        private_elements = driver.find_elements(By.CSS_SELECTOR, "a[data-qa='channel_sidebar_name_private-channel']")
+        private_elements = driver.find_elements(By.CSS_SELECTOR, "div.p-channel_sidebar__channel[data-qa-channel-sidebar-channel-type='private']")
         for element in private_elements:
-            channel_id = element.get_attribute('href').split('/')[-1]
-            channel_name = element.text.strip()
-            private_channels.append({'id': channel_id, 'name': channel_name, 'type': 'private'})
+            name = element.find_element(By.CLASS_NAME, "p-channel_sidebar__name").text.strip()
+            channel_id = element.get_attribute('data-qa-channel-sidebar-channel-id')
+            private_channels.append({'id': channel_id, 'name': name, 'type': 'private'})
         return private_channels
-    except:
+    except Exception as e:
+        logger.error(f"Error getting private channels: {e}")
         return []
 
 def get_group_dms(driver):
     """Get list of group DMs."""
     try:
         group_dms = []
-        group_elements = driver.find_elements(By.CSS_SELECTOR, "a[data-qa='channel_sidebar_name_mpdm']")
+        group_elements = driver.find_elements(By.CSS_SELECTOR, "div.p-channel_sidebar__channel[data-qa-channel-sidebar-channel-type='mpim']")
         for element in group_elements:
-            dm_id = element.get_attribute('href').split('/')[-1]
-            dm_name = element.text.strip()
-            group_dms.append({'id': dm_id, 'name': dm_name, 'type': 'group'})
+            name = element.find_element(By.CLASS_NAME, "p-channel_sidebar__name").text.strip()
+            dm_id = element.get_attribute('data-qa-channel-sidebar-channel-id')
+            group_dms.append({'id': dm_id, 'name': name, 'type': 'group'})
         return group_dms
-    except:
+    except Exception as e:
+        logger.error(f"Error getting group DMs: {e}")
         return []
 
 def get_user_input(prompt: str) -> str:
@@ -883,6 +847,50 @@ def messaging_client():
         # Poll every POLL_INTERVAL seconds
         time.sleep(POLL_INTERVAL)
 
+    # Add this socket listener near the other socket events
+    @sio.on('selectConversation', namespace='/messaging')
+    def on_select_conversation(data):
+        """Handle conversation selection from frontend."""
+        try:
+            conversation_id = data.get('id')
+            conversation_type = data.get('type')
+            logger.info(f"Selecting conversation: {conversation_id} of type {conversation_type}")
+            
+            # Click the conversation in Slack
+            click_conversation(conversation_id, conversation_type)
+            
+            # Notify that chat has changed
+            notify_chat_changed(conversation_id)
+        except Exception as e:
+            logger.error(f"Error selecting conversation: {e}")
+
+    def click_conversation(conversation_id: str, conversation_type: str):
+        """Click on the specified conversation in Slack."""
+        try:
+            # Build selector based on conversation type
+            type_attr = {
+                'channel': 'channel',
+                'dm': 'im',
+                'private': 'private',
+                'group': 'mpim'
+            }.get(conversation_type)
+            
+            if not type_attr:
+                raise ValueError(f"Invalid conversation type: {conversation_type}")
+                
+            # Find and click the conversation element
+            selector = f"div.p-channel_sidebar__channel[data-qa-channel-sidebar-channel-type='{type_attr}'][data-qa-channel-sidebar-channel-id='{conversation_id}']"
+            element = driver.find_element(By.CSS_SELECTOR, selector)
+            element.click()
+            
+            logger.info(f"Clicked conversation: {conversation_id}")
+            
+            # Wait for conversation to load
+            time.sleep(1)
+            
+        except Exception as e:
+            logger.error(f"Error clicking conversation: {e}")
+            raise
 
 if __name__ == "__main__":
     try:

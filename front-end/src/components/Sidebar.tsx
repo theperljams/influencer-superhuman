@@ -44,6 +44,7 @@ interface SidebarProps {
   onSelectConversation: (conversationId: string, senderName: string) => void;
   isSidebarExpanded: boolean;
   toggleSidebar: () => void;
+  isSending: boolean;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -53,6 +54,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onSelectConversation,
   isSidebarExpanded,
   toggleSidebar,
+  isSending,
 }) => {
   const [platforms] = useState<string[]>(['Slack']);
   const [expandedState, setExpandedState] = useState<ExpandedState>({
@@ -138,6 +140,20 @@ const Sidebar: React.FC<SidebarProps> = ({
       participants?: string[];
     }
   ) => {
+    // Prevent switching if message is being sent
+    if (isSending) {
+      setStatus('Please wait for message to send before switching conversations');
+      return;
+    }
+
+    // Emit selection to messaging client
+    const socket = SocketService.getSocket();
+    socket.emit('selectConversation', {
+      id: conversation.id,
+      type: conversation.type
+    }, '/messaging');
+
+    // Update local state
     onSelectConversation(conversation.id, conversation.name);
     if (!isSidebarExpanded) {
       toggleSidebar();
@@ -238,7 +254,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                   key={channel.id}
                                   className={`conversation-item ${
                                     channel.id === selectedConversation ? 'selected' : ''
-                                  }`}
+                                  } ${isSending ? 'disabled' : ''}`}
                                   onClick={() => handleConversationClick(platform, { ...channel, type: 'channel' })}
                                 >
                                   # {channel.name}
@@ -264,7 +280,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                   key={dm.id}
                                   className={`conversation-item ${
                                     dm.id === selectedConversation ? 'selected' : ''
-                                  }`}
+                                  } ${isSending ? 'disabled' : ''}`}
                                   onClick={() => handleConversationClick(platform, { ...dm, type: 'dm' })}
                                 >
                                   @ {dm.name}
@@ -290,7 +306,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                   key={channel.id}
                                   className={`conversation-item ${
                                     channel.id === selectedConversation ? 'selected' : ''
-                                  }`}
+                                  } ${isSending ? 'disabled' : ''}`}
                                   onClick={() => handleConversationClick(platform, { ...channel, type: 'private' })}
                                 >
                                   🔒 {channel.name}
@@ -315,7 +331,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                   key={dm.id}
                                   className={`conversation-item ${
                                     dm.id === selectedConversation ? 'selected' : ''
-                                  }`}
+                                  } ${isSending ? 'disabled' : ''}`}
                                   onClick={() => handleConversationClick(platform, { ...dm, type: 'group' })}
                                 >
                                   👥 {dm.name}
