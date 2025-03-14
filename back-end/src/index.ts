@@ -139,6 +139,14 @@ messagingNamespace.on('connection', (socket) => {
     frontendNamespace.emit('workspaceUpdate', data);
   });
 
+  socket.on('selectConversation', (data) => {
+    console.log('=== Backend Conversation Selection Flow ===');
+    console.log('Received selectConversation event:', data);
+    console.log('Forwarding to frontend namespace...');
+    frontendNamespace.emit('selectConversation', data);
+    console.log('Event forwarded to frontend');
+  });
+
   socket.on('disconnect', () => {
     console.log(`Messaging Client disconnected: ${socket.id}`);
   });

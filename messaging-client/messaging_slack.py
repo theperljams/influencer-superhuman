@@ -804,6 +804,7 @@ def collect_workspaces():
 
     return workspaces
 
+
 def messaging_client():
     global driver
 
@@ -839,7 +840,21 @@ def messaging_client():
         try:
             current_chat_id = get_current_chat_id(driver)
             current_thread_open = is_thread_open(driver)
-            # Rest of the message handling code...
+            
+            # Process any chat/thread changes and get new state
+            last_message_from_me_ts_float, last_processed_ts_float = process_chat_change(driver)
+            
+            # Detect and process new messages
+            new_messages = detect_new_messages(driver, last_processed_ts_float)
+            
+            # Send any new messages via WebSocket
+            for message in new_messages:
+                send_message_via_websocket(
+                    message['content'],
+                    message['timestamp'],
+                    message['hashed_sender_name']
+                )
+                last_processed_ts_float = float(message['message_id'])
 
         except Exception as e:
             logger.exception("Error in main loop.")
@@ -847,50 +862,75 @@ def messaging_client():
         # Poll every POLL_INTERVAL seconds
         time.sleep(POLL_INTERVAL)
 
-    # Add this socket listener near the other socket events
-    @sio.on('selectConversation', namespace='/messaging')
-    def on_select_conversation(data):
-        """Handle conversation selection from frontend."""
-        try:
-            conversation_id = data.get('id')
-            conversation_type = data.get('type')
-            logger.info(f"Selecting conversation: {conversation_id} of type {conversation_type}")
-            
-            # Click the conversation in Slack
-            click_conversation(conversation_id, conversation_type)
-            
-            # Notify that chat has changed
-            notify_chat_changed(conversation_id)
-        except Exception as e:
-            logger.error(f"Error selecting conversation: {e}")
+    # Add these socket event handlers at the module level, before messaging_client()
+@sio.on('selectConversation', namespace='/messaging')
+def on_select_conversation(data):
+    """Handle conversation selection from frontend."""
+    try:
+        logger.info("=== Conversation Selection Flow Start ===")
+        logger.info(f"Received selectConversation event with data: {data}")
+        
+        conversation_id = data.get('id')
+        conversation_type = data.get('type')
+        logger.info(f"Parsed conversation details - ID: {conversation_id}, Type: {conversation_type}")
+        
+        # Click the conversation in Slack
+        logger.info("Attempting to click conversation in Slack...")
+        click_conversation(conversation_id, conversation_type)
+        
+        # Notify that chat has changed
+        logger.info("Notifying frontend of chat change...")
+        notify_chat_changed(conversation_id)
+        
+        logger.info("=== Conversation Selection Flow Complete ===")
+    except Exception as e:
+        logger.error("=== Conversation Selection Flow Failed ===")
+        logger.error(f"Error in conversation selection: {e}")
+        raise
 
-    def click_conversation(conversation_id: str, conversation_type: str):
-        """Click on the specified conversation in Slack."""
-        try:
-            # Build selector based on conversation type
-            type_attr = {
-                'channel': 'channel',
-                'dm': 'im',
-                'private': 'private',
-                'group': 'mpim'
-            }.get(conversation_type)
+def click_conversation(conversation_id: str, conversation_type: str):
+    """Click on the specified conversation in Slack."""
+    global driver
+    try:
+        logger.info("=== Click Conversation Flow Start ===")
+        
+        # Build selector based on conversation type
+        type_attr = {
+            'channel': 'channel',
+            'dm': 'im',
+            'private': 'private',
+            'group': 'mpim'
+        }.get(conversation_type)
+        
+        logger.info(f"Mapped conversation type '{conversation_type}' to selector type '{type_attr}'")
+        
+        if not type_attr:
+            raise ValueError(f"Invalid conversation type: {conversation_type}")
             
-            if not type_attr:
-                raise ValueError(f"Invalid conversation type: {conversation_type}")
-                
-            # Find and click the conversation element
-            selector = f"div.p-channel_sidebar__channel[data-qa-channel-sidebar-channel-type='{type_attr}'][data-qa-channel-sidebar-channel-id='{conversation_id}']"
-            element = driver.find_element(By.CSS_SELECTOR, selector)
-            element.click()
-            
-            logger.info(f"Clicked conversation: {conversation_id}")
-            
-            # Wait for conversation to load
-            time.sleep(1)
-            
-        except Exception as e:
-            logger.error(f"Error clicking conversation: {e}")
-            raise
+        # Build and log selector
+        selector = f"div.p-channel_sidebar__channel[data-qa-channel-sidebar-channel-type='{type_attr}'][data-qa-channel-sidebar-channel-id='{conversation_id}']"
+        logger.info(f"Using selector: {selector}")
+        
+        # Find element
+        logger.info("Searching for conversation element...")
+        element = driver.find_element(By.CSS_SELECTOR, selector)
+        logger.info("Found conversation element")
+        
+        # Click element
+        logger.info("Attempting to click element...")
+        driver.execute_script("arguments[0].click();", element)
+        logger.info("Click executed successfully")
+        
+        # Wait for load
+        logger.info("Waiting for conversation to load...")
+        time.sleep(1)
+        
+        logger.info("=== Click Conversation Flow Complete ===")
+        
+    except Exception as e:
+        logger.error("=== Click Conversation Flow Failed ===")
+        logger.error(f"Error clicking conversation: {e}")
+        raise
 
 if __name__ == "__main__":
     try:

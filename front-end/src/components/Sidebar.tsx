@@ -140,24 +140,31 @@ const Sidebar: React.FC<SidebarProps> = ({
       participants?: string[];
     }
   ) => {
-    // Prevent switching if message is being sent
+    console.log('=== Frontend Conversation Selection Flow ===');
+    
     if (isSending) {
+      console.log('Message sending in progress, preventing conversation switch');
       setStatus('Please wait for message to send before switching conversations');
       return;
     }
 
-    // Emit selection to messaging client
+    console.log('Emitting selectConversation event:', conversation);
     const socket = SocketService.getSocket();
     socket.emit('selectConversation', {
       id: conversation.id,
       type: conversation.type
     }, '/messaging');
+    console.log('Event emitted to backend');
 
-    // Update local state
+    console.log('Updating local state...');
     onSelectConversation(conversation.id, conversation.name);
+    
     if (!isSidebarExpanded) {
+      console.log('Expanding sidebar...');
       toggleSidebar();
     }
+    
+    console.log('Conversation selection complete');
   };
 
   const startResizing = (e: React.MouseEvent) => {
