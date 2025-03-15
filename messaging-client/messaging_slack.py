@@ -535,6 +535,11 @@ def send_response_to_slack(response):
         message_input.send_keys(Keys.ENTER)
 
         logger.info(f"Sent response to Slack: {response}")
+        # Emit messageSent event after successful send
+        sio.emit('messageSent', {
+            'status': 'success',
+            'message': 'Message sent to Slack successfully'
+        }, namespace='/messaging')
 
     except NoSuchElementException as e:
         logger.exception("Failed to locate Slack message input.")
@@ -542,6 +547,11 @@ def send_response_to_slack(response):
         logger.exception("Slack message input not interactable.")
     except Exception as e:
         logger.exception("Failed to send response to Slack.")
+        # Emit failure event
+        sio.emit('messageSent', {
+            'status': 'error',
+            'message': str(e)
+        }, namespace='/messaging')
 
 @sio.on("sendSelectedResponse", namespace="/messaging")
 def on_send_selected_response(data):

@@ -24,6 +24,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const socketRef = useRef<any>(null);
   const [isSendingState, setIsSendingState] = useState<boolean>(false);
+  const [isMessageSentToSlack, setIsMessageSentToSlack] = useState<boolean>(false);
 
   const scrollToCurrentMessage = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -38,8 +39,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
     socketRef.current = socket;
 
     // Reset messages when conversation changes
-    setMessages([]);
-    setMessageIndex(0);
+    if (!isSendingState) {
+      setMessages([]);
+      setMessageIndex(0);
+    }
 
     socket.on('newMessage', (data: any) => {
       console.log('Received newMessage:', data);
@@ -81,18 +84,41 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
       setStatus(data.message);
     });
 
+    socket.on('messageSent', (data) => {
+      console.log('Message sent status:', data);
+      if (data.status === 'success') {
+        setIsSendingState(false);
+        setIsMessageSentToSlack(true);
+        setStatus('Message sent successfully');
+        setNewMessage('');
+        
+        // Update messages if needed
+        if (messages[messageIndex]) {
+          setMessages(prevMessages => 
+            prevMessages.filter(msg => msg.timestamp !== messages[messageIndex].timestamp)
+          );
+          setMessageIndex(prev => Math.max(0, prev - 1));
+        }
+      } else {
+        setStatus(`Error sending message: ${data.message}`);
+        setIsSendingState(false);
+      }
+    });
+
     return () => {
       socket.off('newMessage');
       socket.off('chatChanged');
       socket.off('error');
       socket.off('ack');
+      socket.off('messageSent');
     };
-  }, [selectedConversation]); // Re-run effect when conversation changes
+  }, [selectedConversation, isSendingState]);
 
   const handleSend = () => {
     if (!newMessage.trim() || isSendingState) return;
 
     setIsSendingState(true);
+    setIsMessageSentToSlack(false);
     setStatus('Sending message...');
 
     socketRef.current.emit('submitSelectedResponse', {
@@ -100,19 +126,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
       currMessage: messages[messageIndex]?.message || '',
       messageTimestamp: messages[messageIndex]?.timestamp || null
     });
+  };
 
-    socketRef.current.once('responseSubmitted', () => {
-      setNewMessage('');
-      setStatus('Message sent');
-      setIsSendingState(false);
-      
-      if (messages[messageIndex]) {
-        setMessages(prevMessages => 
-          prevMessages.filter(msg => msg.timestamp !== messages[messageIndex].timestamp)
-        );
-        setMessageIndex(prev => Math.max(0, prev - 1));
-      }
-    });
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault(); // Prevent new line
+      handleSend();
+    }
   };
 
   const handleSuggestedResponse = (response: string) => {
@@ -195,6 +215,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
               className="message-input"
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="Type your message..."
               rows={isExpanded(newMessage) ? 3 : 1}
               disabled={isSendingState}
@@ -204,9 +225,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
               onClick={handleSend}
               disabled={isSendingState}
             >
-              {isSendingState ? 'Sending...' : 'Send'}
+              {isSendingState ? (isMessageSentToSlack ? 'Sent!' : 'Sending...') : 'Send'}
             </button>
           </div>
+          {isSendingState && (
+            <div className="sending-status">
+              {isMessageSentToSlack ? 'Message sent to Slack!' : 'Sending message to Slack...'}
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </>
       ) : (

@@ -68,28 +68,18 @@ messagingNamespace.on('connection', (socket) => {
     console.log("Received newMessage:", data);
 
     try {
-      // Comment out real processing
-      /*
       const generatedResponses = await processChatCompletion(content, user_id, hashed_sender_name, timestamp);
 
       if (!generatedResponses || generatedResponses.length === 0) {
         socket.emit('error', { error: 'Failed to generate responses.' });
         return;
       }
-      */
-
-      // Emit dummy responses instead
-      const dummyResponses = [
-        "That's a great question! Let me help you with that.",
-        "Here's what I think would work best...",
-        "Have you considered trying this approach?"
-      ];
 
       // Add message to queue with dummy responses
       messageQueue.push({
         message: content,
         timestamp: timestamp,
-        responses: dummyResponses,
+        responses: generatedResponses,
         hashed_sender_name: hashed_sender_name,
       });
 
@@ -97,19 +87,9 @@ messagingNamespace.on('connection', (socket) => {
       frontendNamespace.emit('newMessage', {
         message: content,
         timestamp: timestamp,
-        responses: dummyResponses,
+        responses: generatedResponses,
         hashed_sender_name: hashed_sender_name,
       });
-
-      // Comment out DB operations
-      /*
-      await insertQAPair({
-        question: content,
-        answer: selectedResponse,
-        timestamp: timestamp,
-        user_id: user_id
-      });
-      */
 
       socket.emit('ack', { message: 'Message processed and stored in queue.' });
     } catch (error) {
@@ -149,6 +129,23 @@ messagingNamespace.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log(`Messaging Client disconnected: ${socket.id}`);
+  });
+
+  socket.on('sendSelectedResponse', (data) => {
+    const { selected_response, curr_message, message_timestamp } = data;
+    console.log("Sending response to Slack:", selected_response);
+
+    // After sending to Slack, emit a confirmation
+    socket.emit('slackMessageSent', {
+      message: 'Message successfully sent to Slack',
+      timestamp: message_timestamp
+    });
+  });
+
+  socket.on('messageSent', (data) => {
+    console.log('Message sent status from Slack:', data);
+    // Forward to frontend
+    frontendNamespace.emit('messageSent', data);
   });
 });
 
