@@ -47,6 +47,7 @@ interface MessageQueueItem {
   timestamp: number;
   responses: string[];
   hashed_sender_name: string;
+  has_thread: boolean;
 }
 
 // Update the message queue initialization
@@ -59,28 +60,47 @@ interface WorkspaceData {
   dms: Array<{ id: string; name: string }>;
 }
 
+// Frontend-only mode configuration
+const FRONTEND_ONLY_MODE = process.env.FRONTEND_ONLY_MODE === 'true';
+const DUMMY_RESPONSES = [
+  "I understand what you're saying. Let me help with that.",
+  "That's a good point. Here's what I think...",
+  "I see where you're coming from. Have you considered...",
+  "Let me offer a different perspective...",
+  "Based on what you're saying, I would suggest..."
+];
+
 // Handle connections in the Messaging namespace
 messagingNamespace.on('connection', (socket) => {
   console.log('Messaging client connected:', socket.id);
 
   socket.on('newMessage', async (data) => {
-    const { content, timestamp, user_id, hashed_sender_name } = data;
+    const { content, timestamp, user_id, hashed_sender_name, has_thread } = data;
     console.log("Received newMessage:", data);
 
     try {
-      const generatedResponses = await processChatCompletion(content, user_id, hashed_sender_name, timestamp);
+      let generatedResponses;
+      if (FRONTEND_ONLY_MODE) {
+        // In frontend-only mode, use dummy responses
+        generatedResponses = DUMMY_RESPONSES.slice(0, 3);
+        console.log('Frontend-only mode: Using dummy responses');
+      } else {
+        // Normal mode - call the LLM
+        generatedResponses = await processChatCompletion(content, user_id, hashed_sender_name, timestamp);
+      }
 
       if (!generatedResponses || generatedResponses.length === 0) {
         socket.emit('error', { error: 'Failed to generate responses.' });
         return;
       }
 
-      // Add message to queue with dummy responses
+      // Add message to queue
       messageQueue.push({
         message: content,
         timestamp: timestamp,
         responses: generatedResponses,
         hashed_sender_name: hashed_sender_name,
+        has_thread: has_thread
       });
 
       // Send to frontend
@@ -89,6 +109,7 @@ messagingNamespace.on('connection', (socket) => {
         timestamp: timestamp,
         responses: generatedResponses,
         hashed_sender_name: hashed_sender_name,
+        has_thread: has_thread
       });
 
       socket.emit('ack', { message: 'Message processed and stored in queue.' });
@@ -190,53 +211,59 @@ frontendNamespace.on('connection', (socket) => {
       'message_timestamp': messageTimestamp,
     });
 
-    let QAPair = "";
+    if (!FRONTEND_ONLY_MODE) {
+      
+      let QAPair = "";
 
-    if (!currMessage) {
-      QAPair = `started conversation with: ${selected_response}`;
-    } else {
-      QAPair = `message: ${currMessage} response: ${selected_response}`;
-    }
+      if (!currMessage) {
+        QAPair = `started conversation with: ${selected_response}`;
+      } else {
+        QAPair = `message: ${currMessage} response: ${selected_response}`;
+      }
 
-    let hashed_sender_name = "default_sender"; // Default value
+      let hashed_sender_name = "default_sender"; // Default value
 
-    if (messageTimestamp) {
-      // Retrieve the message from the queue to get hashed_sender_name
-      const messageItem = messageQueue.find(
-        (item) => item.timestamp === messageTimestamp
-      );
+      if (messageTimestamp) {
+        // Retrieve the message from the queue to get hashed_sender_name
+        const messageItem = messageQueue.find(
+          (item) => item.timestamp === messageTimestamp
+        );
 
-      if (messageItem) {
-        hashed_sender_name = messageItem.hashed_sender_name;
+        if (messageItem) {
+          hashed_sender_name = messageItem.hashed_sender_name;
 
+          // Insert the Q&A pair into the database
+          insertQAPair(
+            "pearl@easyspeak-aac.com",
+            QAPair,
+            "pearl_message_test",
+            messageTimestamp,
+            hashed_sender_name
+          );
+          console.log("QAPair inserted into database: ", QAPair);
+        } else {
+          console.error('Message not found in queue for timestamp:', messageTimestamp);
+        }
+
+        // Remove the message from the queue
+        messageQueue = messageQueue.filter(
+          (item) => item.timestamp !== messageTimestamp
+        );
+      } else {
         // Insert the Q&A pair into the database
         insertQAPair(
           "pearl@easyspeak-aac.com",
           QAPair,
           "pearl_message_test",
-          messageTimestamp,
+          Date.now(),
           hashed_sender_name
         );
         console.log("QAPair inserted into database: ", QAPair);
-      } else {
-        console.error('Message not found in queue for timestamp:', messageTimestamp);
       }
-
-      // Remove the message from the queue
-      messageQueue = messageQueue.filter(
-        (item) => item.timestamp !== messageTimestamp
-      );
-    } else {
-      // Insert the Q&A pair into the database
-      insertQAPair(
-        "pearl@easyspeak-aac.com",
-        QAPair,
-        "pearl_message_test",
-        Date.now(),
-        hashed_sender_name
-      );
-      console.log("QAPair inserted into database: ", QAPair);
+      
     }
+
+    
   });
 
   socket.on('disconnect', () => {

@@ -14,6 +14,7 @@ interface Message {
   responses: string[];
   timestamp: number;
   sender: string;
+  hasThread?: boolean;
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderName }) => {
@@ -46,22 +47,24 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
 
     socket.on('newMessage', (data: any) => {
       console.log('Received newMessage:', data);
-      const { message, timestamp, responses, sender } = data;
+      const { message, timestamp, responses, sender, hasThread } = data;
 
       setMessages(prevMessages => {
         if (prevMessages.some(msg => msg.timestamp === timestamp)) {
           return prevMessages;
         }
         
+        // Add new messages to the end for chronological order
         const newMessages = [...prevMessages, {
           message,
           responses,
           timestamp,
-          sender
+          sender,
+          hasThread
         }];
-        newMessages.sort((a, b) => a.timestamp - b.timestamp);
         
-        setTimeout(() => setMessageIndex(newMessages.length - 1), 0);
+        // Start at the oldest message (index 0)
+        setTimeout(() => setMessageIndex(0), 0);
         
         return newMessages;
       });
@@ -71,7 +74,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
 
     socket.on('chatChanged', () => {
       setMessages([]);
-      setMessageIndex(0);
+      setTimeout(() => setMessageIndex(0), 0);
       setStatus('Switched to new chat');
     });
 
@@ -105,12 +108,26 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
       }
     });
 
+    socket.on('threadMessages', (data: any) => {
+      const { messages: threadMessages } = data;
+      setMessages(prevMessages => {
+        // Insert thread messages after the parent message
+        const parentIndex = prevMessages.findIndex(msg => msg.timestamp === threadMessages[0].parentTimestamp);
+        if (parentIndex === -1) return prevMessages;
+        
+        const newMessages = [...prevMessages];
+        newMessages.splice(parentIndex + 1, 0, ...threadMessages);
+        return newMessages;
+      });
+    });
+
     return () => {
       socket.off('newMessage');
       socket.off('chatChanged');
       socket.off('error');
       socket.off('ack');
       socket.off('messageSent');
+      socket.off('threadMessages');
     };
   }, [selectedConversation, isSendingState]);
 
@@ -179,7 +196,19 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
                 </button>
               )}
               <div className="sender-message">
-                <p><strong>{currentMessage.sender}:</strong> {currentMessage.message}</p>
+                <p>{currentMessage.message}</p>
+                {currentMessage.hasThread && (
+                  <button 
+                    className="view-thread-button"
+                    onClick={() => {
+                      socketRef.current.emit('getThreadMessages', {
+                        messageTimestamp: currentMessage.timestamp
+                      });
+                    }}
+                  >
+                    View Thread
+                  </button>
+                )}
               </div>
               {messages.length > 1 && (
                 <button

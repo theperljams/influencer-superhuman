@@ -8,6 +8,7 @@ from selenium.common.exceptions import (
     NoSuchElementException,
     ElementNotInteractableException,
     TimeoutException,
+    StaleElementReferenceException,
 )
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -366,108 +367,58 @@ def collect_messages_after(driver, last_message_from_me_ts_float):
         return []
 
 def detect_new_messages(driver, last_processed_ts_float):
-    """
-    Detects new messages based on the current context: DM, channel, or thread.
-    """
+    """Detect and process new messages."""
     try:
-        # Determine context
-        in_dm = is_dm(driver)
-        thread_open = is_thread_open(driver)
+        messages = driver.find_elements(By.CSS_SELECTOR, "div.c-message_kit__background")
         new_messages = []
 
-        if thread_open:
-            logger.info("Thread is open. Detecting new messages in thread up to last message from 'me'.")
-            # Find the last message from 'me' in the thread
-            last_message_from_me_in_thread_ts_float = find_last_message_from_me_in_thread(driver)
+        for message in messages:
+            try:
+                # Get timestamp
+                timestamp_element = message.find_element(By.CSS_SELECTOR, "a.c-timestamp")
+                message_id = timestamp_element.get_attribute("data-ts")
+                ts_float = float(message_id)
 
-            # Collect messages in the thread
-            messages = driver.find_elements(By.CSS_SELECTOR, "div.c-virtual_list__item--thread div.c-message_kit__background")
+                if ts_float > last_processed_ts_float:
+                    # Extract message content
+                    message_text = extract_message_text(message)
+                    sender_name = extract_sender_name(message)
+                    
+                    # Check for thread
+                    has_thread = False
+                    try:
+                        # Look for the reply bar element that contains replies
+                        thread_element = message.find_element(By.CSS_SELECTOR, "div.c-message__reply_bar_description")
+                        reply_text = thread_element.text.strip()
+                        if "reply" in reply_text.lower() or "View thread" in reply_text:
+                            has_thread = True
+                    except NoSuchElementException:
+                        pass
 
-            # Use the timestamp of the last message from 'me' in the thread
-            new_messages = detect_new_messages_from_elements(messages, last_processed_ts_float, last_message_from_me_in_thread_ts_float)
-        elif in_dm:
-            if last_processed_ts_float is None:
-                logger.info("No previous message from 'me' found in DM. Not detecting new messages.")
-                new_messages = []
-            else:
-                logger.info("In a DM. Detecting new messages.")
-                # Collect messages in the DM
-                messages = driver.find_elements(By.CSS_SELECTOR, "div.c-message_kit__background")
-                new_messages = detect_new_messages_from_elements(messages, last_processed_ts_float)
-        else:
-            if last_processed_ts_float is None:
-                logger.info("No previous message from 'me' found in channel. Not detecting new messages.")
-                new_messages = []
-            else:
-                logger.info("In a channel. Detecting new messages.")
-                # Collect messages in the channel
-                messages = driver.find_elements(By.CSS_SELECTOR, "div.c-message_kit__background")
-                new_messages = detect_new_messages_from_elements(messages, last_processed_ts_float)
+                    # Hash the sender's name
+                    hashed_sender_name = hash_sender_name_with_salt(sender_name)
+
+                    new_messages.append({
+                        'content': message_text,
+                        'message_id': message_id,
+                        'timestamp': int(float(message_id) * 1000),
+                        'hashed_sender_name': hashed_sender_name,
+                        'has_thread': has_thread
+                    })
+
+            except (NoSuchElementException, StaleElementReferenceException) as e:
+                logger.warning(f"Could not process a message: {e}")
+                continue
 
         return new_messages
 
     except Exception as e:
-        logger.exception("Error detecting new messages.")
+        logger.exception("Error detecting new messages")
         return []
 
-
-def detect_new_messages_from_elements(messages, last_processed_ts_float, last_message_from_me_ts_float_in_thread=None):
-    """
-    Detects new messages from given message elements after last_processed_ts_float and before last_message_from_me_ts_float_in_thread.
-    """
-    new_messages = []
-
-    # Go through messages from oldest to newest
-    for message in messages:
-        # Extract message ID (timestamp)
-        try:
-            timestamp_element = message.find_element(By.CSS_SELECTOR, "a.c-timestamp")
-            message_id = timestamp_element.get_attribute("data-ts")
-            message_ts_float = float(message_id)
-        except (NoSuchElementException, ValueError):
-            message_id = str(uuid.uuid4())  # Fallback to UUID if timestamp not found
-            message_ts_float = None
-
-        # For threads, stop collecting if message_ts_float >= last_message_from_me_ts_float_in_thread
-        if last_message_from_me_ts_float_in_thread is not None and message_ts_float is not None:
-            if message_ts_float >= last_message_from_me_ts_float_in_thread:
-                break  # Stop collecting further messages
-
-        # Skip messages before or equal to last_processed_ts_float
-        if last_processed_ts_float is not None and message_ts_float is not None:
-            if message_ts_float <= last_processed_ts_float:
-                continue
-
-        # Extract sender name
-        sender_name = extract_sender_name(message)
-        # Skip messages sent by 'me' to prevent feedback loops
-        if "pearl" in sender_name.lower():
-            continue
-        # Extract message content
-        message_text = extract_message_text(message)
-        # Extract timestamp
-        timestamp = extract_timestamp(message_id)
-        # Hash the sender's name
-        hashed_sender_name = hash_sender_name_with_salt(sender_name)
-        # Add message to the list
-        new_messages.append({
-            'message_id': message_id,
-            'content': message_text,
-            'timestamp': timestamp,
-            'hashed_sender_name': hashed_sender_name,
-        })
-
-    # Return new messages sorted by timestamp
-    new_messages.sort(key=lambda x: float(x['message_id']))
-    return new_messages
-
-
-def send_message_via_websocket(content, timestamp, hashed_sender_name):
-    """
-    Sends the new message to the back end via WebSocket.
-    """
+def send_message_via_websocket(content, timestamp, hashed_sender_name, has_thread=False):
+    """Send message to backend via WebSocket."""
     try:
-        # Send the content, timestamp, and hashed sender's name
         sio.emit(
             "newMessage",
             {
@@ -475,12 +426,13 @@ def send_message_via_websocket(content, timestamp, hashed_sender_name):
                 "timestamp": timestamp,
                 "user_id": USER_ID,
                 "hashed_sender_name": hashed_sender_name,
+                "has_thread": has_thread
             },
             namespace="/messaging",
         )
-        logger.info(f'Sent message via WebSocket: "{content}" at {timestamp}')
+        logger.info(f"Sent message via WebSocket: {content}")
     except Exception as e:
-        logger.exception("Failed to send message via WebSocket.")
+        logger.exception("Failed to send message via WebSocket")
 
 def send_response_to_slack(response):
     """
@@ -652,7 +604,8 @@ def process_chat_change(driver):
         send_message_via_websocket(
             message['content'], 
             message['timestamp'], 
-            message['hashed_sender_name']
+            message['hashed_sender_name'],
+            message.get('has_thread', False)
         )
         
     return last_message_from_me_ts_float, last_processed_ts_float
@@ -870,7 +823,8 @@ def messaging_client():
                 send_message_via_websocket(
                     message['content'],
                     message['timestamp'],
-                    message['hashed_sender_name']
+                    message['hashed_sender_name'],
+                    message.get('has_thread', False)
                 )
                 last_processed_ts_float = float(message['message_id'])
 
