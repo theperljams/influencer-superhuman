@@ -156,6 +156,14 @@ messagingNamespace.on('connection', (socket) => {
 frontendNamespace.on('connection', (socket) => {
   console.log('Frontend client connected:', socket.id);
 
+  socket.on('selectConversation', (data) => {
+    console.log('=== Backend Conversation Selection Flow ===');
+    console.log('Received selectConversation from frontend:', data);
+    console.log('Forwarding to messaging namespace...');
+    messagingNamespace.emit('selectConversation', data);
+    console.log('Event forwarded to messaging client');
+  });
+
   socket.on('ack', (data) => {
     console.log(data);
   });

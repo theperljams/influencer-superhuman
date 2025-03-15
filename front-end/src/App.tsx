@@ -10,7 +10,6 @@ const App: React.FC = () => {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [senderName, setSenderName] = useState<string | null>(null);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState<boolean>(true);
-  const [isSending, setIsSending] = useState(false);
 
   const handleSelectPlatform = (platform: string) => {
     setSelectedPlatform(platform);
@@ -36,12 +35,10 @@ const App: React.FC = () => {
         onSelectConversation={handleSelectConversation}
         isSidebarExpanded={isSidebarExpanded}
         toggleSidebar={toggleSidebar}
-        isSending={isSending}
       />
       <ChatWindow
         selectedConversation={selectedConversation}
         senderName={senderName}
-        setIsSending={setIsSending}
       />
     </div>
   );

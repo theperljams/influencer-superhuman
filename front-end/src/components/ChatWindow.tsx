@@ -7,7 +7,6 @@ import SocketService from '../services/socket';
 interface ChatWindowProps {
   selectedConversation: string | null;
   senderName: string | null;
-  setIsSending: (sending: boolean) => void;
 }
 
 interface Message {
@@ -17,7 +16,7 @@ interface Message {
   sender: string;
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderName, setIsSending }) => {
+const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderName }) => {
   const [messageIndex, setMessageIndex] = useState<number>(0);
   const [newMessage, setNewMessage] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -38,11 +37,19 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
     const socket = SocketService.getSocket();
     socketRef.current = socket;
 
+    // Reset messages when conversation changes
+    setMessages([]);
+    setMessageIndex(0);
+
     socket.on('newMessage', (data: any) => {
       console.log('Received newMessage:', data);
       const { message, timestamp, responses, sender } = data;
 
       setMessages(prevMessages => {
+        if (prevMessages.some(msg => msg.timestamp === timestamp)) {
+          return prevMessages;
+        }
+        
         const newMessages = [...prevMessages, {
           message,
           responses,
@@ -50,7 +57,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
           sender
         }];
         newMessages.sort((a, b) => a.timestamp - b.timestamp);
-        setMessageIndex(newMessages.length - 1);
+        
+        setTimeout(() => setMessageIndex(newMessages.length - 1), 0);
+        
         return newMessages;
       });
 
@@ -75,14 +84,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
     return () => {
       socket.off('newMessage');
       socket.off('chatChanged');
+      socket.off('error');
+      socket.off('ack');
     };
-  }, []);
+  }, [selectedConversation]); // Re-run effect when conversation changes
 
   const handleSend = () => {
     if (!newMessage.trim() || isSendingState) return;
 
     setIsSendingState(true);
-    setIsSending(true);
     setStatus('Sending message...');
 
     socketRef.current.emit('submitSelectedResponse', {
@@ -95,7 +105,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedConversation, senderNam
       setNewMessage('');
       setStatus('Message sent');
       setIsSendingState(false);
-      setIsSending(false);
       
       if (messages[messageIndex]) {
         setMessages(prevMessages => 

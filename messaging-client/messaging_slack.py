@@ -50,6 +50,9 @@ running = True
 previous_workspace_name = None
 previous_workspace_data = None
 
+# Add a global variable to track the currently selected conversation
+selected_conversation = None
+
 def signal_handler(sig, frame):
     global running
     logger.info("Shutting down messaging client...")
@@ -806,7 +809,7 @@ def collect_workspaces():
 
 
 def messaging_client():
-    global driver
+    global driver, selected_conversation
 
     try:
         # Connect to WebSocket server
@@ -835,13 +838,18 @@ def messaging_client():
     
     logger.info(f"Collected {len(workspaces)} workspace(s)")
 
-    # Main loop - now only handles messages
+    # Main loop - only runs when conversation is selected
     while running:
         try:
-            current_chat_id = get_current_chat_id(driver)
-            current_thread_open = is_thread_open(driver)
+            # Skip if no conversation is selected
+            if not selected_conversation:
+                logger.info("Waiting for conversation selection...")
+                time.sleep(POLL_INTERVAL)
+                continue
+                
+            logger.info(f"Monitoring conversation: {selected_conversation['name']}")
             
-            # Process any chat/thread changes and get new state
+            # Process messages in the selected conversation
             last_message_from_me_ts_float, last_processed_ts_float = process_chat_change(driver)
             
             # Detect and process new messages
@@ -859,76 +867,75 @@ def messaging_client():
         except Exception as e:
             logger.exception("Error in main loop.")
 
-        # Poll every POLL_INTERVAL seconds
         time.sleep(POLL_INTERVAL)
 
     # Add these socket event handlers at the module level, before messaging_client()
 @sio.on('selectConversation', namespace='/messaging')
 def on_select_conversation(data):
     """Handle conversation selection from frontend."""
+    global selected_conversation
     try:
         logger.info("=== Conversation Selection Flow Start ===")
         logger.info(f"Received selectConversation event with data: {data}")
         
         conversation_id = data.get('id')
+        conversation_name = data.get('name')  # Add name to the data sent from frontend
         conversation_type = data.get('type')
-        logger.info(f"Parsed conversation details - ID: {conversation_id}, Type: {conversation_type}")
+        logger.info(f"Parsed conversation details - ID: {conversation_id}, Name: {conversation_name}, Type: {conversation_type}")
+        
+        # Set the selected conversation
+        selected_conversation = {
+            'id': conversation_id,
+            'name': conversation_name,
+            'type': conversation_type
+        }
         
         # Click the conversation in Slack
-        logger.info("Attempting to click conversation in Slack...")
-        click_conversation(conversation_id, conversation_type)
+        logger.info(f"Attempting to click conversation: {conversation_name}")
+        click_conversation_by_name(conversation_name, conversation_type)
         
-        # Notify that chat has changed
-        logger.info("Notifying frontend of chat change...")
-        notify_chat_changed(conversation_id)
+        # Get initial messages after switching
+        logger.info("Getting initial messages...")
+        last_message_from_me_ts_float, last_processed_ts_float = process_chat_change(driver)
         
         logger.info("=== Conversation Selection Flow Complete ===")
     except Exception as e:
         logger.error("=== Conversation Selection Flow Failed ===")
         logger.error(f"Error in conversation selection: {e}")
+        selected_conversation = None
         raise
 
-def click_conversation(conversation_id: str, conversation_type: str):
-    """Click on the specified conversation in Slack."""
+def click_conversation_by_name(name: str, type_attr: str):
+    """Click on conversation by matching its name."""
     global driver
     try:
-        logger.info("=== Click Conversation Flow Start ===")
+        logger.info(f"Looking for conversation: {name} of type {type_attr}")
         
-        # Build selector based on conversation type
-        type_attr = {
+        # Map type to Slack's attribute
+        type_mapping = {
             'channel': 'channel',
             'dm': 'im',
             'private': 'private',
             'group': 'mpim'
-        }.get(conversation_type)
+        }
+        slack_type = type_mapping.get(type_attr)
         
-        logger.info(f"Mapped conversation type '{conversation_type}' to selector type '{type_attr}'")
+        # Find all elements of this type
+        elements = driver.find_elements(By.CSS_SELECTOR, 
+            f"div.p-channel_sidebar__channel[data-qa-channel-sidebar-channel-type='{slack_type}']")
         
-        if not type_attr:
-            raise ValueError(f"Invalid conversation type: {conversation_type}")
-            
-        # Build and log selector
-        selector = f"div.p-channel_sidebar__channel[data-qa-channel-sidebar-channel-type='{type_attr}'][data-qa-channel-sidebar-channel-id='{conversation_id}']"
-        logger.info(f"Using selector: {selector}")
-        
-        # Find element
-        logger.info("Searching for conversation element...")
-        element = driver.find_element(By.CSS_SELECTOR, selector)
-        logger.info("Found conversation element")
-        
-        # Click element
-        logger.info("Attempting to click element...")
-        driver.execute_script("arguments[0].click();", element)
-        logger.info("Click executed successfully")
-        
-        # Wait for load
-        logger.info("Waiting for conversation to load...")
-        time.sleep(1)
-        
-        logger.info("=== Click Conversation Flow Complete ===")
+        # Find element with matching name
+        for element in elements:
+            element_name = element.find_element(By.CLASS_NAME, "p-channel_sidebar__name").text.strip()
+            if element_name.lower() == name.lower():
+                logger.info(f"Found matching conversation: {name}")
+                driver.execute_script("arguments[0].click();", element)
+                time.sleep(1)  # Wait for conversation to load
+                return
+                
+        raise Exception(f"Could not find conversation: {name}")
         
     except Exception as e:
-        logger.error("=== Click Conversation Flow Failed ===")
         logger.error(f"Error clicking conversation: {e}")
         raise
 
