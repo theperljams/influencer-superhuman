@@ -2,21 +2,11 @@ import dotenv from 'dotenv';
 import { fetchRetrievals } from './db';
 import OpenAI from 'openai';
 import { getContextConversation, getCurrentConversationMessages, getCurrentConversationMessagesBySender, getMessagesByHashedSenderName, getMessagesUpToTimestamp } from './db';
-import axios, { AxiosInstance } from 'axios';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 dotenv.config();
 
 const ragieApiKey = process.env.RAGIE_API_KEY;
-const openAiApiKey = process.env.OPENAI_API_KEY;
-const OPENAI_EMBEDDING_URL: string = 'https://api.openai.com/v1/embeddings';
-
-const axiosInstance: AxiosInstance = axios.create({
-  headers: {
-      'Authorization': `Bearer ${openAiApiKey}`,
-      'Content-Type': 'application/json',
-  },
-});
 
 const googleApiKey = process.env.GOOGLE_API_KEY;
 const genAI = new GoogleGenerativeAI(googleApiKey!);
@@ -27,15 +17,15 @@ if (!ragieApiKey || !googleApiKey) {
 
 export const getEmbedding = async (content: string) => {
   try {
-      const response = await axiosInstance.post(OPENAI_EMBEDDING_URL, {
-          model: "text-embedding-ada-002",
-          input: content,
-          encoding_format: "float",
-      });
-      return response.data.data[0].embedding;
+    const model = genAI.getGenerativeModel({
+      model: "text-embedding-004",
+    });
+    
+    const result = await model.embedContent(content);
+    return result.embedding;
   } catch (error: any) {
-      console.error('Error in getEmbedding:', error);
-      throw error;
+    console.error('Error in getEmbedding:', error);
+    throw error;
   }
 }
 
