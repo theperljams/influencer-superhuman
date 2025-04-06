@@ -13,11 +13,50 @@ if (!SUPABASE_URL || !SUPABASE_API_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_API_KEY);
 
-const SIMILARITY_THRESHOLD = 0.1;
-const MATCH_COUNT = 50;
 
 
-// supabase-db.js (or the appropriate file)
+export const getContextCurrent = async (embedding: number[], user_id: string, match: number, similarity: number) => {
+  try {
+    const { data, error } = await supabase.rpc('match_current', {
+      match_count: match,
+      query_embedding: embedding,
+      similarity_threshold: similarity,
+      userid: user_id
+    });
+    
+    let result: Array<string> = [];
+    for (const i in data) result.push(data[i].content);
+    console.log(result);
+    return result;
+    
+  } catch (error) {
+    throw error;
+  }
+}
+
+export const getContextLegacy = async (embedding: number[], user_id: string, match: number, similarity: number) => {
+  try {
+    const { data, error } = await supabase.rpc('match_legacy', {
+      match_count: match,
+      query_embedding: embedding,
+      similarity_threshold: similarity,
+      userid: user_id
+    });
+    
+    let result: Array<string> = [];
+    for (const i in data) result.push(data[i].content);
+    return result;
+    
+  } catch (error) {
+    throw error;
+  }
+}
+
+export const getUserData = async (token: string) => {
+  const { data: { user } } = await supabase.auth.getUser(token);
+
+  return user;
+}
 
 export const insertQAPair = async (
   user_id: string,
@@ -197,115 +236,3 @@ export const getMessagesUpToTimestamp = async (timestamp, limit) => {
     return null;
   }
 };
-
-export const getContextAll = async (user_id: string) => {
-  try {
-    const { data: longData, error: longError } = await supabase
-      .from('long')
-      .select('*')
-      .eq('user_id', user_id);
-
-    const { data: shortData, error: shortError } = await supabase
-      .from('short')
-      .select('*')
-      .eq('user_id', user_id);
-
-    if (longError || shortError) {
-      throw new Error('Error fetching data from Supabase');
-    }
-    
-    let result: Array<string> = [];
-    for (const i in shortData) result.push(shortData[i].content);
-    for (const j in longData) result.push(longData[j].content);
-
-    return result;
-  } catch (error) {
-    throw error;
-  }
-}
-
-export const getSethContext = async (embedding: number[], match: number, similarity: number) => {
-  try {
-    const { data, error } = await supabase.rpc('match_sethxamy', {
-      match_count: match,
-      query_embedding: embedding,
-      similarity_threshold: similarity,
-    });
-    
-    let result: Array<string> = [];
-    for (const i in data) result.push(data[i].content);
-    return result;
-    
-  } catch (error) {
-    throw error;
-  }
-}
-
-export const getContextLong = async (embedding: number[], user_id: string) => {
-  try {
-    const { data, error } = await supabase.rpc('match_long', {
-      match_count: MATCH_COUNT,
-      query_embedding: embedding,
-      similarity_threshold: SIMILARITY_THRESHOLD,
-      userid: user_id
-    });
-    
-    let result: Array<string> = [];
-    for (const i in data) result.push(data[i].content);
-    return result;
-    
-  } catch (error) {
-    throw error;
-  }
-}
-
-export const getContextConversation = async (embedding: number[], user_id: string) => {
-  try {
-    const { data, error } = await supabase.rpc('match_conversations', {
-      match_count: MATCH_COUNT,
-      query_embedding: embedding,
-      similarity_threshold: SIMILARITY_THRESHOLD,
-      userid: user_id
-    });
-    
-    let result: Array<string> = [];
-    for (const i in data) result.push(data[i].content);
-    return result;
-    
-  } catch (error) {
-    throw error;
-  }
-}
-
-export const getUserData = async (token: string) => {
-  const { data: { user } } = await supabase.auth.getUser(token);
-
-  return user;
-}
-
-export async function fetchRetrievals(apiKey: string, content: string, user_id: string, top_k: number, max_chunks: number, rerank: boolean) {
-  try {
-    const response = await fetch("https://api.ragie.ai/retrievals", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + apiKey,
-      },
-      body: JSON.stringify({
-        "query": content,
-        "top_k": top_k,
-        "filter": {
-          "user": user_id,
-        },
-        "rerank": rerank,
-        "max_chunks_per_document": max_chunks
-      }),
-    });
-
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error("Error fetching retrievals:", error);
-    throw error;
-  }
-}

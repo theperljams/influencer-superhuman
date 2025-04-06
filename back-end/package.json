@@ -12,6 +12,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@cerebras/cerebras_cloud_sdk": "^1.28.0",
     "@google/generative-ai": "^0.24.0",
     "@supabase/supabase-js": "^2.48.1",
     "axios": "^1.7.9",
