@@ -6,7 +6,7 @@ dotenv.config();
 
 // Configure which model types to use
 const EMBEDDING_MODEL = EmbeddingModelType.OPENAI;
-const CHAT_COMPLETION_MODEL = ChatCompletionModelType.CEREBRAS; // or OPENAI
+const CHAT_COMPLETION_MODEL = ChatCompletionModelType.GOOGLE; // or OPENAI
 
 // Create model instances
 const embeddingModel = ModelFactory.createEmbeddingModel(EMBEDDING_MODEL);

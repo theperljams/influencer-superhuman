@@ -410,12 +410,19 @@ def detect_new_messages(driver, last_processed_ts_float):
         logger.exception("Error detecting new messages.")
         return []
 
-
 def detect_new_messages_from_elements(messages, last_processed_ts_float, last_message_from_me_ts_float_in_thread=None):
     """
     Detects new messages from given message elements after last_processed_ts_float and before last_message_from_me_ts_float_in_thread.
     """
     new_messages = []
+
+    # Convert last_processed_ts_float to float if it's a string and not None
+    last_processed_ts = None
+    if last_processed_ts_float is not None:
+        try:
+            last_processed_ts = float(last_processed_ts_float)
+        except Exception:
+            last_processed_ts = None
 
     # Go through messages from oldest to newest
     for message in messages:
@@ -430,12 +437,16 @@ def detect_new_messages_from_elements(messages, last_processed_ts_float, last_me
 
         # For threads, stop collecting if message_ts_float >= last_message_from_me_ts_float_in_thread
         if last_message_from_me_ts_float_in_thread is not None and message_ts_float is not None:
-            if message_ts_float >= last_message_from_me_ts_float_in_thread:
-                break  # Stop collecting further messages
+            try:
+                thread_limit = float(last_message_from_me_ts_float_in_thread)
+                if message_ts_float >= thread_limit:
+                    break  # Stop collecting further messages
+            except Exception:
+                pass
 
-        # Skip messages before or equal to last_processed_ts_float
-        if last_processed_ts_float is not None and message_ts_float is not None:
-            if message_ts_float <= last_processed_ts_float:
+        # Skip messages before or equal to last_processed_ts
+        if last_processed_ts is not None and message_ts_float is not None:
+            if message_ts_float <= last_processed_ts:
                 continue
 
         # Extract sender name
@@ -460,7 +471,6 @@ def detect_new_messages_from_elements(messages, last_processed_ts_float, last_me
     # Return new messages sorted by timestamp
     new_messages.sort(key=lambda x: float(x['message_id']))
     return new_messages
-
 
 def send_message_via_websocket(content, timestamp, hashed_sender_name):
     """
@@ -775,7 +785,7 @@ def wait_for_workspace():
     for attempt in range(max_attempts):
         try:
             current_workspace_name = get_current_workspace_name(driver)
-            if current_workspace_name:
+            if (current_workspace_name):
                 logger.info(f"Found workspace name: {current_workspace_name}")
                 workspace_data = get_workspace_data()
                 if workspace_data:
@@ -821,6 +831,10 @@ def collect_workspaces():
 def messaging_client():
     global driver, selected_conversation
 
+    # Track last sent message id per chat
+    last_sent_message_id_per_chat = {}
+    last_sent_chat_id = None
+
     try:
         # Connect to WebSocket server
         sio.connect(
@@ -848,38 +862,67 @@ def messaging_client():
     
     logger.info(f"Collected {len(workspaces)} workspace(s)")
 
-    # Main loop - only runs when conversation is selected
     while running:
         try:
-            # Skip if no conversation is selected
             if not selected_conversation:
                 logger.info("Waiting for conversation selection...")
                 time.sleep(POLL_INTERVAL)
                 continue
-                
+
             logger.info(f"Monitoring conversation: {selected_conversation['name']}")
-            
-            # Process messages in the selected conversation
-            last_message_from_me_ts_float, last_processed_ts_float = process_chat_change(driver)
-            
-            # Detect and process new messages
-            new_messages = detect_new_messages(driver, last_processed_ts_float)
-            
-            # Send any new messages via WebSocket
-            for message in new_messages:
+
+            # Get current chat id
+            current_chat_id = get_current_chat_id(driver)
+
+            # If chat has changed, notify backend and reset last sent message id for this chat
+            if current_chat_id != last_sent_chat_id:
+                logger.info(f"Chat changed from {last_sent_chat_id} to {current_chat_id}")
+                notify_chat_changed(current_chat_id)
+                last_sent_chat_id = current_chat_id
+                last_sent_message_id_per_chat[current_chat_id] = None
+
+            # Get the last sent message id for this chat
+            last_sent_message_id = last_sent_message_id_per_chat.get(current_chat_id)
+
+            # Detect new messages (from others) since last sent message in this chat
+            new_messages = detect_new_messages(driver, last_sent_message_id)
+            logger.info(f"Detected {len(new_messages)} new messages in chat {current_chat_id}")
+            logger.info(f"Last sent message ID: {last_sent_message_id}")
+
+            # Only send the latest new message (if any) to backend
+            if new_messages:
+                logger.info(f"Sending {len(new_messages)} new messages to backend")
+                latest_message = new_messages[-1]
                 send_message_via_websocket(
-                    message['content'],
-                    message['timestamp'],
-                    message['hashed_sender_name']
+                    latest_message['content'],
+                    latest_message['timestamp'],
+                    latest_message['hashed_sender_name']
                 )
-                last_processed_ts_float = float(message['message_id'])
+                # Always update the last sent message id, even if only one message is sent
+                last_sent_message_id_per_chat[current_chat_id] = latest_message['message_id']
+                logger.info(f"Sent latest message to backend: {latest_message['content']}")
+                logger.info(f"Updated last sent message ID for chat {current_chat_id}: {latest_message['message_id']}")
+            else:
+                # If no new messages, but there are messages in the chat, update the last_sent_message_id to the latest message in the chat
+                messages = driver.find_elements(By.CSS_SELECTOR, "div.c-message_kit__background")
+                if messages:
+                    try:
+                        timestamp_element = messages[-1].find_element(By.CSS_SELECTOR, "a.c-timestamp")
+                        message_id = timestamp_element.get_attribute("data-ts")
+                        last_sent_message_id_per_chat[current_chat_id] = message_id
+                        logger.info(f"No new messages, set last_sent_message_id for chat {current_chat_id} to {message_id}")
+                    except Exception:
+                        pass
+
+            # Emit workspace update after polling for new messages
+            emit_workspace_update()
 
         except Exception as e:
             logger.exception("Error in main loop.")
 
         time.sleep(POLL_INTERVAL)
 
-    # Add these socket event handlers at the module level, before messaging_client()
+# Add these socket event handlers at the module level, before messaging_client()
 @sio.on('selectConversation', namespace='/messaging')
 def on_select_conversation(data):
     """Handle conversation selection from frontend."""
